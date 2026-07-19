@@ -944,6 +944,7 @@ async function buildExcelWorkbook(){
 
 /* ---- Excel取込（差分をポップアップで確認してから反映） ---- */
 let pendingImport=null;
+let pendingImportNew=null; // Excelにだけ居る新しい研修生 {名前: {col, changes:[{id,newV}], invalid}}
 
 // 取り込んだ文字列をHTMLに安全に埋め込むための最小エスケープ
 function escI(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
@@ -1012,6 +1013,19 @@ function analyzeImport(wb){
     return;
   }
 
+  // 見出し行にいる「現在のシステムに居ない名前」＝新しい研修生の候補
+  const IGNORE_HEADS=["項目","内容","管理者確認","氏名","備考","メモ","担当","担当者","日付","達成率","№","no","番号"];
+  const newNameCols={};
+  for(let c=1;c<=ws.columnCount;c++){
+    if(c===itemCol||c===catCol) continue;
+    if(Object.values(nameCols).includes(c)) continue;
+    const raw=importCellText(ws,headRow,c);
+    const t=normTitle(raw);
+    if(!t||IGNORE_HEADS.includes(t.toLowerCase())) continue;
+    if(state.names.some(n=>normTitle(n)===t)) continue;
+    newNameCols[raw.replace(/\s+/g," ").trim()]={col:c,changes:[],invalid:0};
+  }
+
   // 現在の項目一覧と照合する索引（カテゴリ＋項目名／項目名のみ）
   const byCatItem={}, byItem={};
   state.items.forEach(it=>{
@@ -1037,16 +1051,25 @@ function analyzeImport(wb){
       const cur=it.vals[n]||"";
       if(nv!==cur) changes.push({id:it.id,cat:it.cat,item:it.item,name:n,oldV:cur,newV:nv});
     });
+    // 新しい研修生の記号も集める（追加が選ばれた場合だけ反映する）
+    Object.entries(newNameCols).forEach(([n,info])=>{
+      const raw=importCellText(ws,r,info.col);
+      const nv=normSym(raw);
+      if(nv===null){ info.invalid++; return; }
+      if(nv!=="") info.changes.push({id:it.id,newV:nv});
+    });
   }
 
-  if(!changes.length){
+  const hasNew=Object.keys(newNameCols).length>0;
+  if(!changes.length && !hasNew){
     toast(skipped.length
       ? '反映できる違いはありませんでした（照合できない行あり）'
       : 'ネット上のデータとの違いはありませんでした');
     return;
   }
   pendingImport=changes;
-  renderImportModal(changes,skipped,Object.keys(nameCols));
+  pendingImportNew=hasNew?newNameCols:null;
+  renderImportModal(changes,skipped,Object.keys(nameCols),newNameCols);
 }
 
 function importChipHtml(v){
@@ -1054,10 +1077,26 @@ function importChipHtml(v){
   return `<span class="chip ${cls}" style="${v?"":"color:#c7d0d8"}">${v||"・"}</span>`;
 }
 
-function renderImportModal(changes,skipped,names){
+function renderImportModal(changes,skipped,names,newNameCols){
+  const newNames=Object.keys(newNameCols||{});
+  const parts=[];
+  if(changes.length) parts.push(`${changes.length}件の違い`);
+  if(newNames.length) parts.push(`新しい研修生 ${newNames.length}名`);
   document.getElementById('importSummary').textContent=
-    `Excelとネット上のデータで ${changes.length}件 の違いが見つかりました（照合した研修生：${names.join('・')}）。反映するものにチェックを付けて「反映する」を押してください。`;
-  document.getElementById('importList').innerHTML=changes.map((ch,i)=>`
+    `Excelから ${parts.join(" と ")} が見つかりました（照合した研修生：${names.join('・')||"なし"}）。反映するものにチェックを付けて「反映する」を押してください。`;
+
+  // 新しい研修生（1人1行。チェックすると名前の追加＋その人の記号をまとめて取り込む）
+  const newRows=newNames.map(n=>{
+    const info=newNameCols[n];
+    return `
+    <label class="diffrow" style="background:#eef7f0;border-color:#8fcaa5">
+      <input type="checkbox" data-new="${escI(n)}" checked>
+      <span class="who">🆕 ${escI(n)}さん</span>
+      <span class="itm">Excelにだけいる名前です — <b>研修生に追加</b>して記入 <b>${info.changes.length}件</b> を取り込む${info.invalid?`（判別不能 ${info.invalid}件は除外）`:""}</span>
+    </label>`;
+  }).join('');
+
+  document.getElementById('importList').innerHTML=newRows+changes.map((ch,i)=>`
     <label class="diffrow">
       <input type="checkbox" data-i="${i}" checked>
       <span class="who">${escI(ch.name)}さん</span>
@@ -1077,15 +1116,36 @@ function renderImportModal(changes,skipped,names){
 
 function cancelImport(){
   pendingImport=null;
+  pendingImportNew=null;
   closeModal('modalImport');
 }
 
 function applyImport(){
-  if(!pendingImport){ closeModal('modalImport'); return; }
-  let n=0;
-  document.querySelectorAll('#importList input[type=checkbox]').forEach(cb=>{
+  if(!pendingImport && !pendingImportNew){ closeModal('modalImport'); return; }
+  let n=0, added=[];
+
+  // 1) 新しい研修生の追加＋その人の記号の取り込み
+  document.querySelectorAll('#importList input[data-new]').forEach(cb=>{
+    if(!cb.checked || !pendingImportNew) return;
+    const name=cb.dataset.new;
+    const info=pendingImportNew[name];
+    if(!info || state.names.includes(name)) return;
+    state.names.push(name);
+    state.items.forEach(it=>{ it.vals[name]=""; it.who[name]=""; it.date[name]=""; it.memo[name]=""; });
+    info.changes.forEach(ch=>{
+      const it=state.items.find(x=>x.id===ch.id);
+      if(!it) return;
+      it.vals[name]=ch.newV;
+      if((ch.newV==="○"||ch.newV==="▲") && !it.date[name]) it.date[name]=todayStr();
+      n++;
+    });
+    added.push(name);
+  });
+
+  // 2) 既存研修生の差分の反映
+  document.querySelectorAll('#importList input[data-i]').forEach(cb=>{
     if(!cb.checked) return;
-    const ch=pendingImport[+cb.dataset.i];
+    const ch=pendingImport && pendingImport[+cb.dataset.i];
     const it=ch && state.items.find(x=>x.id===ch.id);
     if(!it) return;
     it.vals[ch.name]=ch.newV;
@@ -1093,9 +1153,15 @@ function applyImport(){
     if((ch.newV==="○"||ch.newV==="▲") && !it.date[ch.name]) it.date[ch.name]=todayStr();
     n++;
   });
+
   pendingImport=null;
+  pendingImportNew=null;
   closeModal('modalImport');
-  if(n){ save(); render(); toast(`${n}件をネット上のデータに反映しました`); }
+  if(n||added.length){
+    save(); render();
+    const msg=[added.length?`研修生「${added.join('・')}」を追加`:"",n?`${n}件を反映`:""].filter(Boolean).join('し、');
+    toast(msg+'しました');
+  }
   else toast('反映する変更が選ばれていませんでした');
 }
 
