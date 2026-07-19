@@ -266,6 +266,18 @@
   .itemrow input{flex:1;border:1px solid var(--line2);border-radius:7px;padding:6px 9px;font-size:13px;outline:none}
   .itemrow input:focus{border-color:var(--brand)}
 
+  /* Excel取込：差分確認リスト */
+  .diffrow{display:flex;align-items:center;gap:9px;padding:8px 11px;border:1px solid var(--line);
+    border-radius:9px;margin-bottom:6px;font-size:14px;background:#fff;cursor:pointer}
+  .diffrow:hover{border-color:var(--brand)}
+  .diffrow input{width:auto;flex-shrink:0}
+  .diffrow .who{font-weight:700;flex-shrink:0;min-width:70px}
+  .diffrow .itm{flex:1;color:var(--sub);font-size:13px;line-height:1.4}
+  .diffrow .itm b{color:var(--ink);font-size:14px}
+  .diffrow .chg{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;color:var(--sub)}
+  .import-skip{margin-top:14px;font-size:12.5px;color:#b23b3b;line-height:1.7;background:#fdeaea;
+    border-radius:9px;padding:10px 12px}
+
   /* who picker popover */
   .pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 12px 32px rgba(0,0,0,.2);padding:6px;min-width:130px;display:none}
   .pop.show{display:block}
@@ -362,6 +374,7 @@
       <button class="btn" onclick="openItems()">項目を編集</button>
       <button class="btn" onclick="printAll()">印刷</button>
       <button class="btn" onclick="exportExcel()" title="紙の研修ファイルと同じ形式のExcelを書き出します（A4縦印刷設定済み）">Excel出力</button>
+      <button class="btn" onclick="importExcelFile()" title="店舗などで記入されたExcelを読み込み、ネット上のデータとの違いを確認してから反映します">Excel取込</button>
       <button class="btn" onclick="exportData()" title="現在のデータをJSONファイルで手元に保存">バックアップ</button>
       <button class="btn" onclick="if(confirm('ログアウトしますか？'))window.fbLogout()">ログアウト</button>
     </div>
@@ -454,6 +467,21 @@
       <div class="addrow"><input id="newCat" placeholder="新しいカテゴリ名" onkeydown="if(event.key==='Enter')addCat()"><button class="btn primary" onclick="addCat()">カテゴリ追加</button></div>
     </div>
     <div class="modal-f"><button class="btn primary" onclick="closeModal('modalItems')">完了</button></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalImport">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-h"><h2>Excel取込：変更内容の確認</h2><button class="modal-x" onclick="cancelImport()">×</button></div>
+    <div class="modal-b">
+      <div class="subhead" id="importSummary"></div>
+      <div id="importList"></div>
+      <div class="import-skip" id="importSkipped" style="display:none"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="cancelImport()">キャンセル</button>
+      <button class="btn primary" onclick="applyImport()">チェックした変更を反映する</button>
+    </div>
   </div>
 </div>
 
@@ -912,6 +940,163 @@ async function buildExcelWorkbook(){
   });
   flushCatMerge(r-1);
   return wb;
+}
+
+/* ---- Excel取込（差分をポップアップで確認してから反映） ---- */
+let pendingImport=null;
+
+// 取り込んだ文字列をHTMLに安全に埋め込むための最小エスケープ
+function escI(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+// 手書き・手入力の揺れを吸収して正規の記号に直す。判別できない場合は null
+function normSym(s){
+  s=String(s==null?"":s).replace(/[\s　]/g,"");
+  if(!s) return "";
+  if(["○","〇","◯","Ｏ","O","o","0"].includes(s)) return "○";
+  if(["▲","△","▴","▵"].includes(s)) return "▲";
+  if(["―","ー","−","-","－","ｰ","–","—","‐"].includes(s)) return "―";
+  if(s==="書") return "書";
+  if(["・","･",".","·","…"].includes(s)) return "";
+  return null;
+}
+// 項目名の照合用（空白・全角空白の違いを無視）
+function normTitle(s){return String(s||"").replace(/[\s　]/g,"");}
+
+function importExcelFile(){
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  inp.onchange=async ()=>{
+    const f=inp.files[0];
+    if(!f) return;
+    toast('Excelを読み込み中…');
+    try{ await ensureExcelJS(); }
+    catch(e){ toast('Excel部品の読み込みに失敗しました。ネット環境をご確認ください。'); return; }
+    try{
+      const buf=await f.arrayBuffer();
+      const wb=new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      analyzeImport(wb);
+    }catch(e){ console.error(e); toast('Excelを読み込めませんでした。ファイルをご確認ください。'); }
+  };
+  inp.click();
+}
+
+function importCellText(ws,r,c){
+  const cell=ws.getRow(r).getCell(c);
+  return (cell && cell.text!=null ? String(cell.text) : "").trim();
+}
+
+function analyzeImport(wb){
+  const ws=wb.worksheets[0];
+  if(!ws){ toast('シートが見つかりません'); return; }
+
+  // 見出し行を探す：「内容」列があり、現在の研修生名が1人以上見つかる行
+  let headRow=0,itemCol=0,catCol=1;
+  const nameCols={};
+  for(let r=1;r<=Math.min(12,ws.rowCount);r++){
+    let ic=0,cc=0; const nc={};
+    for(let c=1;c<=ws.columnCount;c++){
+      const t=normTitle(importCellText(ws,r,c));
+      if(!t) continue;
+      if(t==="内容") ic=c;
+      if(t==="項目") cc=c;
+      state.names.forEach(n=>{ if(t===normTitle(n)) nc[n]=c; });
+    }
+    if(ic && Object.keys(nc).length){
+      headRow=r; itemCol=ic; catCol=cc||1; Object.assign(nameCols,nc); break;
+    }
+  }
+  if(!headRow){
+    toast('見出し行が見つかりません。「Excel出力」で作ったファイルをご利用ください。');
+    return;
+  }
+
+  // 現在の項目一覧と照合する索引（カテゴリ＋項目名／項目名のみ）
+  const byCatItem={}, byItem={};
+  state.items.forEach(it=>{
+    byCatItem[normTitle(it.cat)+"|"+normTitle(it.item)]=it;
+    const k=normTitle(it.item);
+    byItem[k]=(k in byItem)?null:it; // 同名項目が複数ある場合は曖昧なので使わない
+  });
+
+  const changes=[],skipped=[];
+  let curCat="";
+  for(let r=headRow+1;r<=ws.rowCount;r++){
+    const catT=importCellText(ws,r,catCol);
+    const itemT=importCellText(ws,r,itemCol);
+    if((catT+itemT).includes("達成率")) continue;   // 達成率の行は対象外
+    if(catT) curCat=catT;                            // カテゴリ結合セルは値を引き継ぐ
+    if(!itemT) continue;
+    let it=byCatItem[normTitle(curCat)+"|"+normTitle(itemT)] || byItem[normTitle(itemT)];
+    if(!it){ skipped.push(`「${itemT}」：現在の項目一覧に見つからないため対象外`); continue; }
+    Object.entries(nameCols).forEach(([n,c])=>{
+      const raw=importCellText(ws,r,c);
+      const nv=normSym(raw);
+      if(nv===null){ skipped.push(`「${it.item}」${n}さん：記号「${raw}」を判別できないため対象外`); return; }
+      const cur=it.vals[n]||"";
+      if(nv!==cur) changes.push({id:it.id,cat:it.cat,item:it.item,name:n,oldV:cur,newV:nv});
+    });
+  }
+
+  if(!changes.length){
+    toast(skipped.length
+      ? '反映できる違いはありませんでした（照合できない行あり）'
+      : 'ネット上のデータとの違いはありませんでした');
+    return;
+  }
+  pendingImport=changes;
+  renderImportModal(changes,skipped,Object.keys(nameCols));
+}
+
+function importChipHtml(v){
+  const cls=v==="○"?"ok":v==="▲"?"warn":v==="―"?"skip":v==="書"?"doc":"empty";
+  return `<span class="chip ${cls}" style="${v?"":"color:#c7d0d8"}">${v||"・"}</span>`;
+}
+
+function renderImportModal(changes,skipped,names){
+  document.getElementById('importSummary').textContent=
+    `Excelとネット上のデータで ${changes.length}件 の違いが見つかりました（照合した研修生：${names.join('・')}）。反映するものにチェックを付けて「反映する」を押してください。`;
+  document.getElementById('importList').innerHTML=changes.map((ch,i)=>`
+    <label class="diffrow">
+      <input type="checkbox" data-i="${i}" checked>
+      <span class="who">${escI(ch.name)}さん</span>
+      <span class="itm"><b>${escI(ch.item)}</b>　${escI(ch.cat)}</span>
+      <span class="chg">${importChipHtml(ch.oldV)} → ${importChipHtml(ch.newV)}</span>
+    </label>`).join('');
+  const sk=document.getElementById('importSkipped');
+  if(skipped.length){
+    sk.style.display='block';
+    sk.innerHTML="⚠ 取り込み対象外だった箇所："+skipped.slice(0,30).map(s=>"<br>・"+escI(s)).join("")
+      +(skipped.length>30?`<br>…ほか${skipped.length-30}件`:"");
+  }else{
+    sk.style.display='none';
+  }
+  openModal('modalImport');
+}
+
+function cancelImport(){
+  pendingImport=null;
+  closeModal('modalImport');
+}
+
+function applyImport(){
+  if(!pendingImport){ closeModal('modalImport'); return; }
+  let n=0;
+  document.querySelectorAll('#importList input[type=checkbox]').forEach(cb=>{
+    if(!cb.checked) return;
+    const ch=pendingImport[+cb.dataset.i];
+    const it=ch && state.items.find(x=>x.id===ch.id);
+    if(!it) return;
+    it.vals[ch.name]=ch.newV;
+    // 画面での操作と同じく、初めて○・▲が付いた時は日付を自動記録
+    if((ch.newV==="○"||ch.newV==="▲") && !it.date[ch.name]) it.date[ch.name]=todayStr();
+    n++;
+  });
+  pendingImport=null;
+  closeModal('modalImport');
+  if(n){ save(); render(); toast(`${n}件をネット上のデータに反映しました`); }
+  else toast('反映する変更が選ばれていませんでした');
 }
 
 async function exportExcel(){
