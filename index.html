@@ -755,18 +755,26 @@ function expandAll(){
 
 function jumpToCat(cat){
   // 折りたたまれていたら開いてから移動する
-  if(collapsedCats.has(cat)){ collapsedCats.delete(cat); render(); }
-  const row=document.querySelector(`tr[data-cat="${CSS.escape(cat)}"]`);
-  const scroller=document.querySelector('.scroll');
-  if(!row||!scroller) return;
-  // 実際の描画位置から「固定ヘッダーの直下に来る」ぶんだけスクロールする
-  const thead=scroller.querySelector('thead');
-  const headerBottom=thead?thead.getBoundingClientRect().bottom:scroller.getBoundingClientRect().top;
-  const delta=row.getBoundingClientRect().top-headerBottom;
-  scroller.scrollBy({top:delta,behavior:'smooth'});
-  // 目印として1秒ほどハイライト
-  row.classList.add('jumpflash');
-  setTimeout(()=>row.classList.remove('jumpflash'),1200);
+  const wasCollapsed=collapsedCats.has(cat);
+  if(wasCollapsed){ collapsedCats.delete(cat); render(); }
+  const go=()=>{
+    const row=document.querySelector(`tr[data-cat="${CSS.escape(cat)}"]`);
+    const scroller=document.querySelector('.scroll');
+    if(!row||!scroller) return;
+    // 「そのカテゴリの先頭が固定ヘッダーの直下に来る」絶対位置へスクロールする。
+    // （相対スクロールだと、アニメーション中の連打などで位置が積み重なってずれるため）
+    const thead=scroller.querySelector('thead');
+    const top=row.getBoundingClientRect().top
+      -scroller.getBoundingClientRect().top
+      +scroller.scrollTop
+      -(thead?thead.offsetHeight:0);
+    scroller.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+    // 目印として1秒ほどハイライト
+    row.classList.add('jumpflash');
+    setTimeout(()=>row.classList.remove('jumpflash'),1200);
+  };
+  // 展開し直した直後は、描画が落ち着いた次のフレームで位置を測る
+  if(wasCollapsed) requestAnimationFrame(go); else go();
 }
 
 /* ---- modals ---- */
