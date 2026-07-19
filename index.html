@@ -511,8 +511,6 @@ document.addEventListener('DOMContentLoaded',()=>{
   const em=document.getElementById('email');
   [pw,em].forEach(el=>{ if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); }); });
 });
-// serializeStateをFirebase初期化コードから呼べるよう公開
-window.serializeState=function(){ return serializeState(); };
 
 // 保険：Firebase(モジュール)が読み込めず認証状態が判明しないままローディングが続く場合、
 // 数秒でログイン画面に切り替える（file://直開き・SDK読込失敗など）
@@ -532,6 +530,7 @@ window.addEventListener('DOMContentLoaded',()=>{
 function serializeState(){
   return { names: state.names, admins: state.admins, items: state.items, _updated: Date.now() };
 }
+window.serializeState = serializeState;
 
 // リモート（Firebase）から受信したデータで画面を更新
 window.applyRemoteState = function(remote){
