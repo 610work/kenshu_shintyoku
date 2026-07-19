@@ -978,14 +978,30 @@ function importExcelFile(){
       const wb=new ExcelJS.Workbook();
       await wb.xlsx.load(buf);
       analyzeImport(wb);
-    }catch(e){ console.error(e); toast('Excelを読み込めませんでした。ファイルをご確認ください。'); }
+    }catch(e){ console.error(e); toast('Excelを読み込めませんでした（'+(e&&e.message||e)+'）'); }
   };
   inp.click();
 }
 
 function importCellText(ws,r,c){
   const cell=ws.getRow(r).getCell(c);
-  return (cell && cell.text!=null ? String(cell.text) : "").trim();
+  if(!cell) return "";
+  let t="";
+  try{
+    t=(cell.text!=null)?String(cell.text):"";
+  }catch(e){
+    // ExcelJSは数式セル等で .text が例外を投げることがあるため、値から直接取り出す
+    const v=cell.value;
+    if(v==null) t="";
+    else if(typeof v==="object"){
+      if(v.richText) t=v.richText.map(rt=>rt&&rt.text||"").join("");
+      else if(v.result!=null) t=String(v.result);
+      else if(v.text!=null) t=String(v.text);
+      else t="";
+    }
+    else t=String(v);
+  }
+  return t.trim();
 }
 
 function analyzeImport(wb){
@@ -1000,9 +1016,10 @@ function analyzeImport(wb){
     for(let c=1;c<=ws.columnCount;c++){
       const t=normTitle(importCellText(ws,r,c));
       if(!t) continue;
-      if(t==="内容") ic=c;
-      if(t==="項目") cc=c;
-      state.names.forEach(n=>{ if(t===normTitle(n)) nc[n]=c; });
+      // 見出しが横に結合されていると全セルが同じ値を返すため、最初の列を採用する
+      if(t==="内容" && !ic) ic=c;
+      if(t==="項目" && !cc) cc=c;
+      state.names.forEach(n=>{ if(!(n in nc) && t===normTitle(n)) nc[n]=c; });
     }
     if(ic && Object.keys(nc).length){
       headRow=r; itemCol=ic; catCol=cc||1; Object.assign(nameCols,nc); break;
