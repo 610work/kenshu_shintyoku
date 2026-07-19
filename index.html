@@ -186,6 +186,24 @@
   .pill.active{background:var(--brand);color:#fff;border-color:var(--brand)}
 
   .wrap{max-width:1500px;margin:16px auto 60px;padding:0 18px}
+  /* 左のカテゴリジャンプメニュー＋表の2カラム */
+  .layout{display:flex;gap:14px;align-items:flex-start}
+  .catnav{
+    flex:0 0 152px;position:sticky;top:120px;max-height:calc(100vh - 155px);overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:8px;
+  }
+  .catnav-h{font-size:11.5px;font-weight:700;color:var(--sub);padding:4px 8px 8px}
+  .catnav-btn{
+    display:block;width:100%;text-align:left;border:none;background:none;padding:7px 10px;
+    border-radius:8px;font-size:13.5px;cursor:pointer;color:var(--ink);font-family:inherit;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .catnav-btn:hover{background:var(--bg);color:var(--brand)}
+  .catnav-btn.closed{color:#9aa7b3}
+  .catnav-btn.closed::before{content:"▶ ";font-size:9px}
+  @media(max-width:900px){.catnav{display:none}}
+  /* ジャンプ先のカテゴリを一瞬ハイライト */
+  tr.jumpflash td{background:#fff3d6 !important;transition:background .3s}
   .tablecard{background:var(--panel);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--line)}
   .scroll{overflow:auto;max-height:calc(100vh - 230px)}
   table{border-collapse:separate;border-spacing:0;width:100%;min-width:680px}
@@ -308,7 +326,8 @@
   @media print{
     @page{size:A4 portrait;margin:9mm 7mm}
     body{background:#fff;font-size:9.5px}
-    header,.summary,.note,.searchbox,.btn,.filterpills,.modal-bg,.pop,.toast,#gate{display:none !important}
+    header,.summary,.note,.searchbox,.btn,.filterpills,.modal-bg,.pop,.toast,#gate,.catnav{display:none !important}
+    .layout{display:block}
     .wrap{margin:0;padding:0;max-width:none}
     .tablecard{box-shadow:none;border:none;border-radius:0}
     .scroll{overflow:visible;max-height:none}
@@ -393,14 +412,23 @@
         <span class="pill" data-f="warn" onclick="setFilter(this)">要フォロー(▲)</span>
         <span class="pill" data-f="empty" onclick="setFilter(this)">未着手</span>
       </div>
+      <div class="filterpills">
+        <span class="pill" onclick="collapseAll()">▶ 全て折りたたむ</span>
+        <span class="pill" onclick="expandAll()">▼ 全て展開</span>
+      </div>
     </div>
   </header>
 
   <div class="wrap">
     <div class="print-title">新人研修プログラム 進捗表</div>
     <div class="summary" id="summary"></div>
-    <div class="tablecard">
-      <div class="scroll"><table id="tbl"></table></div>
+    <div class="layout">
+      <nav class="catnav" id="catNav"></nav>
+      <div style="flex:1;min-width:0">
+        <div class="tablecard">
+          <div class="scroll"><table id="tbl"></table></div>
+        </div>
+      </div>
     </div>
     <div class="note">
       <b>記号</b>：セル上部をクリックで 空欄→○→▲→―→書→空欄 と切替。／
@@ -675,7 +703,7 @@ function render(){
     if(collapsed){
       if(isNew){
         lastCat=it.cat;shown++;
-        html+=`<tr class="catstart collapsed-row"><td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▶</span>${it.cat}</td>`;
+        html+=`<tr class="catstart collapsed-row" data-cat="${it.cat.replace(/"/g,'&quot;')}"><td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▶</span>${it.cat}</td>`;
         html+=`<td class="col-item" style="cursor:pointer" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')">${catCounts[it.cat]}項目（クリックで展開）</td>`;
         state.names.forEach(()=>{html+=`<td class="stcell"></td>`;});
         html+=`</tr>`;
@@ -683,7 +711,7 @@ function render(){
       return;
     }
     shown++;
-    html+=`<tr class="${isNew?'catstart':''}">`;
+    html+=`<tr class="${isNew?'catstart':''}"${isNew?` data-cat="${it.cat.replace(/"/g,'&quot;')}"`:''}>`;
     if(isNew){html+=`<td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▼</span>${it.cat}</td>`;lastCat=it.cat;}else{html+=`<td class="col-cat"></td>`;}
     html+=`<td class="col-item"><span class="itemname">${it.item}</span></td>`;
     state.names.forEach(n=>{
@@ -703,6 +731,42 @@ function render(){
   html+="</tbody>";
   if(shown===0)html+=`<tbody><tr><td colspan="${2+state.names.length}" class="empty-note">該当する項目がありません</td></tr></tbody>`;
   tbl.innerHTML=html;
+  renderCatNav();
+}
+
+/* ---- カテゴリの一括開閉＆左のジャンプメニュー ---- */
+function renderCatNav(){
+  const nav=document.getElementById('catNav');
+  if(!nav) return;
+  const cats=[...new Set(state.items.map(i=>i.cat))];
+  nav.innerHTML='<div class="catnav-h">カテゴリ（クリックで移動）</div>'+cats.map(c=>
+    `<button class="catnav-btn ${collapsedCats.has(c)?'closed':''}" onclick="jumpToCat('${c.replace(/'/g,"\\'")}')" title="${c.replace(/"/g,'&quot;')}">${c}</button>`
+  ).join('');
+}
+
+function collapseAll(){
+  [...new Set(state.items.map(i=>i.cat))].forEach(c=>collapsedCats.add(c));
+  render();
+}
+function expandAll(){
+  collapsedCats.clear();
+  render();
+}
+
+function jumpToCat(cat){
+  // 折りたたまれていたら開いてから移動する
+  if(collapsedCats.has(cat)){ collapsedCats.delete(cat); render(); }
+  const row=document.querySelector(`tr[data-cat="${CSS.escape(cat)}"]`);
+  const scroller=document.querySelector('.scroll');
+  if(!row||!scroller) return;
+  // 実際の描画位置から「固定ヘッダーの直下に来る」ぶんだけスクロールする
+  const thead=scroller.querySelector('thead');
+  const headerBottom=thead?thead.getBoundingClientRect().bottom:scroller.getBoundingClientRect().top;
+  const delta=row.getBoundingClientRect().top-headerBottom;
+  scroller.scrollBy({top:delta,behavior:'smooth'});
+  // 目印として1秒ほどハイライト
+  row.classList.add('jumpflash');
+  setTimeout(()=>row.classList.remove('jumpflash'),1200);
 }
 
 /* ---- modals ---- */
