@@ -184,12 +184,30 @@
   .filterpills{display:flex;gap:6px}
   .pill{padding:6px 13px;border:1px solid var(--line);background:#fff;border-radius:20px;font-size:13.5px;cursor:pointer;color:var(--sub);font-weight:600}
   .pill.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+  /* 担当者で絞込むセレクト */
+  .who-filter{
+    padding:6px 10px;border:1px solid var(--line);background:#fff;border-radius:20px;
+    font-size:13.5px;color:var(--sub);font-weight:600;font-family:inherit;cursor:pointer;outline:none;
+  }
+  .who-filter.on{background:var(--doc);color:#fff;border-color:var(--doc)}
+  /* 絞込中：該当セルを強調し、それ以外は薄く */
+  .cellbox.who-dim{opacity:.25}
+  .cellbox.who-hit .whobtn{background:var(--doc-bg);color:var(--doc);border-color:var(--doc);font-weight:700}
 
-  .wrap{max-width:1500px;margin:16px auto 60px;padding:0 18px}
-  /* 左のカテゴリジャンプメニュー＋表の2カラム */
-  .layout{display:flex;gap:14px;align-items:flex-start}
+  .wrap{max-width:1500px;margin:16px auto 16px;padding:0 18px}
+  /* 使い方（折りたたみ） */
+  .note-details{margin:0 0 12px}
+  .note-details summary{
+    cursor:pointer;font-size:12.5px;color:var(--sub);font-weight:600;
+    display:inline-block;padding:4px 12px;background:var(--panel);border:1px solid var(--line);border-radius:20px;
+  }
+  .note-details summary:hover{color:var(--brand);border-color:var(--brand)}
+  .note-details[open] .note{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px}
+  /* 左のカテゴリジャンプメニュー＋表の2カラム。
+     レイアウトごと画面に貼り付け、ページをスクロールしても研修生の行が隠れないようにする */
+  .layout{display:flex;gap:14px;align-items:flex-start;position:sticky;top:calc(var(--header-h,110px) + 10px)}
   .catnav{
-    flex:0 0 152px;position:sticky;top:120px;max-height:calc(100vh - 155px);overflow:auto;
+    flex:0 0 152px;max-height:calc(100vh - var(--header-h,110px) - 40px);overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:8px;
   }
   .catnav-h{font-size:11.5px;font-weight:700;color:var(--sub);padding:4px 8px 8px}
@@ -211,11 +229,13 @@
     }
     .catnav-h{display:none}
     .catnav-btn{width:auto;flex:0 0 auto;font-size:12.5px;padding:6px 11px;background:var(--bg);border-radius:20px}
+    /* 横並びカテゴリバーの高さぶん、表の高さを少し詰める */
+    .scroll{max-height:calc(100vh - var(--header-h,110px) - 105px)}
   }
   /* ジャンプ先のカテゴリを一瞬ハイライト */
   tr.jumpflash td{background:#fff3d6 !important;transition:background .3s}
   .tablecard{background:var(--panel);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--line)}
-  .scroll{overflow:auto;max-height:calc(100vh - 230px)}
+  .scroll{overflow:auto;max-height:calc(100vh - var(--header-h,110px) - 40px)}
   table{border-collapse:separate;border-spacing:0;width:100%;min-width:680px}
   thead th{position:sticky;top:0;z-index:20;background:#f7fafc;font-size:15px;font-weight:700;color:var(--sub);padding:11px 8px;border-bottom:2px solid var(--line);white-space:nowrap;text-align:center}
   thead th.cat-h,thead th.item-h{text-align:left}
@@ -246,7 +266,7 @@
   .cmtbtn{font-size:14.5px;background:none;border:none;padding:0 2px;cursor:pointer;color:#c0cad3;line-height:1}
   .cmtbtn:hover{color:var(--brand)}
   .cmtbtn.set{color:var(--warn)}
-  .whobtn{font-size:14px;color:var(--sub);background:var(--bg);border:1px solid var(--line);border-radius:7px;min-width:36px;min-height:25px;padding:2px 8px;cursor:pointer;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .whobtn{font-size:13px;color:var(--sub);background:var(--bg);border:1px solid var(--line);border-radius:7px;min-width:36px;min-height:25px;padding:3px 7px;cursor:pointer;max-width:104px;white-space:normal;word-break:break-all;line-height:1.35}
   .whobtn:hover{border-color:var(--brand);background:#eef4f8}
   .whobtn.set{color:var(--doc);background:var(--doc-bg);border-color:transparent;font-weight:600}
 
@@ -381,7 +401,7 @@
   @media print{
     @page{size:A4 portrait;margin:9mm 7mm}
     body{background:#fff;font-size:9.5px}
-    header,.summary,.note,.searchbox,.btn,.filterpills,.modal-bg,.pop,.toast,#gate,.catnav{display:none !important}
+    header,.summary,.note,.note-details,.searchbox,.btn,.filterpills,.modal-bg,.pop,.toast,#gate,.catnav{display:none !important}
     .layout{display:block}
     .wrap{margin:0;padding:0;max-width:none}
     .tablecard{box-shadow:none;border:none;border-radius:0}
@@ -444,17 +464,12 @@
         <input id="search" placeholder="項目を検索…" oninput="render()">
       </div>
       <button class="btn" style="position:relative" onclick="openComments()" title="コメントが入っている箇所の一覧。クリックでその項目へ移動できます">🗨 コメント<span class="redbadge" id="cmtBadge" style="display:none"></span></button>
-      <button class="btn" onclick="openTrainees()">研修生を管理</button>
-      <button class="btn" onclick="openAdmins()">担当者を管理</button>
-      <button class="btn" onclick="openItems()">項目を編集</button>
       <button class="btn" onclick="printAll()">印刷</button>
       <button class="btn" onclick="exportExcel()" title="紙の研修ファイルと同じ形式のExcelを書き出します（A4縦印刷設定済み）">Excel出力</button>
       <button class="btn" onclick="importExcelFile()" title="店舗などで記入されたExcelを読み込み、ネット上のデータとの違いを確認してから反映します">Excel取込</button>
-      <button class="btn" onclick="exportData()" title="現在のデータをJSONファイルで手元に保存">バックアップ</button>
-      <button class="btn" onclick="importBackup()" title="バックアップ(JSON)からデータを復元します">復元</button>
       <button class="btn" onclick="openHistory()" title="変更履歴（誰がいつ何を変えたか）">履歴</button>
       <button class="btn" id="opBtn" onclick="openOperator()" title="操作している人の名前（履歴に記録されます）">👤 —</button>
-      <button class="btn" onclick="if(confirm('ログアウトしますか？'))window.fbLogout()">ログアウト</button>
+      <button class="btn" onclick="openSettings(event)" title="管理系の機能をまとめたメニュー">⚙ 設定</button>
     </div>
     <div class="subbar">
       <div class="legend">
@@ -475,12 +490,27 @@
         <span class="pill" onclick="collapseAll()">▶ 全て折りたたむ</span>
         <span class="pill" onclick="expandAll()">▼ 全て展開</span>
       </div>
+      <select id="whoFilter" class="who-filter" onchange="setWhoFilter(this.value)" title="担当者で絞り込み：その人が研修をやった項目・セルだけを表示します">
+        <option value="">👥 担当者で絞込</option>
+      </select>
     </div>
   </header>
 
   <div class="wrap">
     <div class="print-title">新人研修プログラム 進捗表</div>
     <div class="summary" id="summary"></div>
+    <details class="note-details">
+      <summary>❓ 使い方</summary>
+      <div class="note">
+        <b>記号</b>：セル上部をクリックで 空欄→○→▲→―→書→空欄 と切替。／
+        <b>日付</b>：初めて○か▲を付けた日が自動で入ります。日付をクリックするとカレンダーで変更できます。／
+        <b>コメント</b>：🗨をクリックでメモを書けます（記入済みは色付きの💬）。／
+        <b>担当者</b>：セル下部の四角をクリックで、研修をやった人を選択（<b>複数人選べます</b>）。／
+        <b>カテゴリ名をクリック</b>すると折りたたみできます。／
+        研修生・担当者・研修項目は「⚙設定」からいつでも増減できます。／
+        <b>変更は自動で保存され、他の研修担当者の画面にもすぐ反映されます</b>（Excelをメールで送る必要はありません）。画面右上の表示が「🟢 接続中」なら正常です。
+      </div>
+    </details>
     <div class="layout">
       <nav class="catnav" id="catNav"></nav>
       <div style="flex:1;min-width:0">
@@ -489,20 +519,23 @@
         </div>
       </div>
     </div>
-    <div class="note">
-      <b>記号</b>：セル上部をクリックで 空欄→○→▲→―→書→空欄 と切替。／
-      <b>日付</b>：初めて○か▲を付けた日が自動で入ります。日付をクリックするとカレンダーで変更できます。／
-      <b>コメント</b>：🗨をクリックでメモを書けます（記入済みは色付きの💬）。／
-      <b>担当者</b>：セル下部の四角をクリックで、研修をやった人を選択（<b>複数人選べます</b>）。／
-      <b>カテゴリ名をクリック</b>すると折りたたみできます。／
-      研修生・担当者・研修項目は右上のボタンからいつでも増減できます。／
-      <b>変更は自動で保存され、他の研修担当者の画面にもすぐ反映されます</b>（Excelをメールで送る必要はありません）。画面右上の表示が「🟢 接続中」なら正常です。
-    </div>
   </div>
 </div>
 
 <!-- popovers -->
 <div class="pop" id="pop" onclick="event.stopPropagation()"></div>
+<div class="pop" id="spop" onclick="event.stopPropagation()">
+  <button onclick="closeAllPops();openTrainees()">👥 研修生を管理</button>
+  <button onclick="closeAllPops();openAdmins()">🧑‍🏫 担当者を管理</button>
+  <button onclick="closeAllPops();openItems()">📋 項目を編集</button>
+  <div class="pop-actions">
+    <button onclick="closeAllPops();exportData()">💾 バックアップ（保存）</button>
+    <button onclick="closeAllPops();importBackup()">↩ バックアップから復元</button>
+  </div>
+  <div class="pop-actions">
+    <button class="clear" onclick="closeAllPops();if(confirm('ログアウトしますか？'))window.fbLogout()">ログアウト</button>
+  </div>
+</div>
 <div class="dpop" id="dpop" onclick="event.stopPropagation()">
   <div class="pophead">研修日</div>
   <input type="date" id="dpopInput">
@@ -649,6 +682,15 @@ const initialSnapshot=JSON.stringify(state);
 let savedSnapshot=initialSnapshot;
 function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 let filter="all";
+let filterWho=""; // 担当者絞込（空=絞込なし）
+
+// ヘッダーの高さをCSS変数に反映（表エリアの貼り付け位置・高さ計算に使う）
+function setHeaderVar(){
+  const h=document.querySelector('header');
+  if(h) document.documentElement.style.setProperty('--header-h', h.offsetHeight+"px");
+}
+window.addEventListener('resize', setHeaderVar);
+window.addEventListener('DOMContentLoaded', setHeaderVar);
 
 // ===== ログイン画面の制御 =====
 function doLogin(){
@@ -675,6 +717,7 @@ window.onLoggedIn=function(){
   document.getElementById('gateLoading').style.display='none';
   document.getElementById('app').style.display='block';
   render();
+  setHeaderVar();
   updateOpBtn();
   // 操作者名が未設定なら、最初に選んでもらう（履歴の記録に使う）
   if(!getOperator()) setTimeout(openOperator,400);
@@ -807,6 +850,7 @@ function closeAllPops(){
   document.getElementById('pop').classList.remove('show');
   document.getElementById('dpop').classList.remove('show');
   document.getElementById('cpop').classList.remove('show');
+  const sp=document.getElementById('spop'); if(sp) sp.classList.remove('show');
   // 担当者の変更があれば、ポップを閉じたタイミングでまとめて保存・同期する
   if(whoDirty){
     whoDirty=false;
@@ -817,8 +861,23 @@ function closeAllPops(){
     popBtnEl=null; save(); render();
   }
 }
-function setFilter(el){document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');filter=el.dataset.f;render();}
-function matchesFilter(it){if(filter==="all")return true;const vals=state.names.map(n=>it.vals[n]||"");if(filter==="warn")return vals.includes("▲");if(filter==="empty")return vals.some(v=>v==="");return true;}
+function setFilter(el){document.querySelectorAll('.pill[data-f]').forEach(p=>p.classList.remove('active'));el.classList.add('active');filter=el.dataset.f;render();}
+function whoIncludes(it,n,admin){ return ((it.who&&it.who[n])||"").split("・").includes(admin); }
+function matchesFilter(it){
+  // 担当者絞込：その担当者が誰かに教えた項目だけを表示
+  if(filterWho && !activeNames().some(n=>whoIncludes(it,n,filterWho))) return false;
+  if(filter==="all")return true;
+  const vals=activeNames().map(n=>it.vals[n]||"");
+  if(filter==="warn")return vals.includes("▲");
+  if(filter==="empty")return vals.some(v=>v==="");
+  return true;
+}
+function setWhoFilter(v){
+  filterWho=v;
+  const sel=document.getElementById('whoFilter');
+  if(sel) sel.classList.toggle('on',!!v);
+  render();
+}
 function progressFor(name){let done=0,total=0;state.items.forEach(it=>{const v=it.vals[name]||"";if(v==="―")return;total++;if(v==="○")done++;});return{done,total,pct:total?Math.round(done/total*100):0};}
 
 /* ---- who popover（複数選択可） ---- */
@@ -965,7 +1024,9 @@ function render(){
     names.forEach(n=>{
       const v=it.vals[n]||"";const who=it.who[n]||"";const dt=it.date[n]||"";const memo=it.memo[n]||"";
       const dtShort=dt?dt.replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):"";
-      html+=`<td class="stcell"><div class="cellbox">
+      // 担当者絞込中：該当セルを強調、それ以外は薄く
+      const whoCls=filterWho?(whoIncludes(it,n,filterWho)?" who-hit":" who-dim"):"";
+      html+=`<td class="stcell"><div class="cellbox${whoCls}">
         <button class="stbtn ${stClass(v)}" onclick="cycle(${it.id},'${n}')">${v||"·"}</button>
         <div class="cellrow">
           <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},'${n}')">${dtShort||"日付"}</button>
@@ -981,6 +1042,28 @@ function render(){
   tbl.innerHTML=html;
   renderCatNav();
   updateCmtBadge();
+  renderWhoFilter();
+}
+
+// 担当者絞込セレクトの中身を最新の担当者一覧で作り直す（選択は維持）
+function renderWhoFilter(){
+  const sel=document.getElementById('whoFilter');
+  if(!sel) return;
+  const cur=filterWho;
+  sel.innerHTML=`<option value="">👥 担当者で絞込</option>`+
+    state.admins.map(a=>`<option value="${a.replace(/"/g,'&quot;')}" ${a===cur?"selected":""}>👥 ${a} が教えた項目</option>`).join('');
+  sel.classList.toggle('on',!!cur);
+}
+
+/* ---- 設定メニュー ---- */
+function openSettings(ev){
+  ev.stopPropagation();
+  const r=ev.target.getBoundingClientRect();
+  closeAllPops();
+  const sp=document.getElementById('spop');
+  sp.classList.add('show');
+  sp.style.left=Math.max(8,Math.min(r.left,window.innerWidth-sp.offsetWidth-8))+"px";
+  sp.style.top=(r.bottom+6)+"px";
 }
 
 /* ---- カテゴリの一括開閉＆左のジャンプメニュー ---- */
