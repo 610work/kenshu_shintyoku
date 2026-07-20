@@ -226,6 +226,8 @@
   tbody tr:hover td{background:#f8fbfd}
   tbody tr:hover .col-cat,tbody tr:hover .col-item{background:#f8fbfd}
   .itemname{font-weight:500}
+  /* 紙の研修ファイル由来の「管理者確認」欄（Excel出力の管理者確認列と同じもの） */
+  .legacy-admin{font-size:11.5px;color:#9aa7b3;margin-top:2px}
   tr.catstart td{border-top:2px solid var(--line)}
   .catlabel{padding-top:11px}
 
@@ -815,22 +817,43 @@ let popTarget=null;
 let popBtnEl=null;   // 開いた元のボタン（開いたまま表示を更新するため）
 let whoDirty=false;  // チェックを触ったらポップを閉じた時にまとめて保存する
 function openWho(ev,id,name){
-  ev.stopPropagation();closeAllPops();
+  ev.stopPropagation();
+  // 位置は先に測っておく（次のcloseAllPopsで表が再描画されると
+  // クリックされたボタンが古い要素になり、位置が(0,0)になってしまうため）
+  const r=ev.target.getBoundingClientRect();
+  closeAllPops();
   const pop=document.getElementById('pop');
   popTarget={id,name};
-  popBtnEl=ev.target;
+  // 再描画された後の「今のDOMにあるボタン」を取り直す（開いたままの表示更新用）
+  const rowEl=document.querySelector(`tr[data-id="${id}"]`);
+  const colIdx=activeNames().indexOf(name);
+  popBtnEl=(rowEl&&colIdx>=0)?rowEl.querySelectorAll('.whobtn')[colIdx]:ev.target;
   const it=state.items.find(x=>x.id===id);
   const cur=(it.who[name]||"").split("・").filter(Boolean);
   let h=`<div class="pophead" style="padding:6px 13px 2px">研修をやった人（複数選べます）</div>`;
   state.admins.forEach(a=>{
     h+=`<label class="pop-check"><input type="checkbox" value="${a.replace(/"/g,'&quot;')}" ${cur.includes(a)?"checked":""} onchange="whoChanged()"> ${a}</label>`;
   });
+  h+=`<button class="clear" style="color:var(--brand)" onclick="applyWhoToRow()">⇒ この項目の全員に同じ担当を適用</button>`;
   h+=`<button class="clear" onclick="clearWho()">（クリア）</button>`;
   pop.innerHTML=h;
-  const r=ev.target.getBoundingClientRect();
-  pop.style.left=Math.min(r.left,window.innerWidth-170)+"px";
-  pop.style.top=Math.min(r.bottom+4,window.innerHeight-60-state.admins.length*38)+"px";
+  pop.style.left=Math.min(r.left,window.innerWidth-190)+"px";
+  pop.style.top=Math.min(r.bottom+4,window.innerHeight-100-state.admins.length*38)+"px";
   pop.classList.add('show');
+}
+
+// 集団研修用：この項目の担当者を、全員（表示中の研修生）にまとめて適用する
+function applyWhoToRow(){
+  if(!popTarget)return;
+  const it=state.items.find(x=>x.id===popTarget.id);
+  if(!it)return;
+  const v=it.who[popTarget.name]||"";
+  activeNames().forEach(n=>{ it.who[n]=v; });
+  whoDirty=false; popBtnEl=null;   // closeAllPops側の二重処理を防ぐ
+  logChange(`${it.item}：全員の担当者を「${v||"なし"}」に一括設定`);
+  document.getElementById('pop').classList.remove('show');
+  save(); render();
+  toast(v?`この項目の全員の担当を「${v}」にしました`:"この項目の全員の担当をクリアしました");
 }
 function whoChanged(){
   if(!popTarget)return;
@@ -895,7 +918,7 @@ function render(){
     shown++;
     html+=`<tr class="${isNew?'catstart':''}" data-id="${it.id}"${isNew?` data-cat="${it.cat.replace(/"/g,'&quot;')}"`:''}>`;
     if(isNew){html+=`<td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▼</span>${it.cat}</td>`;lastCat=it.cat;}else{html+=`<td class="col-cat"></td>`;}
-    html+=`<td class="col-item"><span class="itemname">${it.item}</span></td>`;
+    html+=`<td class="col-item"><span class="itemname">${it.item}</span>${it.admin?`<div class="legacy-admin">管理者確認：${it.admin}</div>`:""}</td>`;
     names.forEach(n=>{
       const v=it.vals[n]||"";const who=it.who[n]||"";const dt=it.date[n]||"";const memo=it.memo[n]||"";
       const dtShort=dt?dt.replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):"";
