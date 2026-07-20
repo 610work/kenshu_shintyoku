@@ -342,11 +342,15 @@
   .drag-grip{color:#c0cad3;cursor:grab;flex-shrink:0;font-size:14px;user-select:none}
 
   /* who picker popover */
-  .pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 12px 32px rgba(0,0,0,.2);padding:6px;min-width:150px;display:none}
-  .pop.show{display:block}
+  .pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 12px 32px rgba(0,0,0,.2);padding:6px;min-width:180px;display:none}
+  .pop.show{display:flex;flex-direction:column}
+  /* チェックボックスの一覧だけをスクロールさせ、下の操作ボタンは常に見える */
+  .pop .pop-list{overflow-y:auto;overscroll-behavior:contain}
   .pop button{display:block;width:100%;text-align:left;border:none;background:none;padding:9px 13px;border-radius:8px;font-size:14.5px;cursor:pointer;color:var(--ink)}
   .pop button:hover{background:var(--bg)}
-  .pop button.clear{color:var(--sub);border-top:1px solid var(--line2);margin-top:4px}
+  .pop .pop-actions{flex-shrink:0;border-top:1px solid var(--line2);margin-top:4px;padding-top:4px}
+  .pop button.clear{color:var(--sub)}
+  .pop .pop-actions button.apply{color:var(--brand);font-weight:600}
   .pop .pop-check{
     display:flex;align-items:center;gap:9px;padding:8px 13px;border-radius:8px;
     font-size:14.5px;cursor:pointer;color:var(--ink);user-select:none;
@@ -835,16 +839,44 @@ function openWho(ev,id,name){
   popBtnEl=(rowEl&&colIdx>=0)?rowEl.querySelectorAll('.whobtn')[colIdx]:ev.target;
   const it=state.items.find(x=>x.id===id);
   const cur=(it.who[name]||"").split("・").filter(Boolean);
-  let h=`<div class="pophead" style="padding:6px 13px 2px">研修をやった人（複数選べます）</div>`;
+  let h=`<div class="pophead" style="padding:6px 13px 6px;flex-shrink:0">研修をやった人（複数選べます）</div>`;
+  h+=`<div class="pop-list">`;
   state.admins.forEach(a=>{
     h+=`<label class="pop-check"><input type="checkbox" value="${a.replace(/"/g,'&quot;')}" ${cur.includes(a)?"checked":""} onchange="whoChanged()"> ${a}</label>`;
   });
-  h+=`<button class="clear" style="color:var(--brand)" onclick="applyWhoToRow()">⇒ ○△が付いた人に同じ担当を一括適用</button>`;
+  h+=`</div>`;
+  h+=`<div class="pop-actions">`;
+  h+=`<button class="apply" onclick="applyWhoToRow()">⇒ ○△が付いた人に同じ担当を一括適用</button>`;
   h+=`<button class="clear" onclick="clearWho()">（クリア）</button>`;
+  h+=`</div>`;
   pop.innerHTML=h;
-  pop.style.left=Math.min(r.left,window.innerWidth-190)+"px";
-  pop.style.top=Math.min(r.bottom+4,window.innerHeight-100-state.admins.length*38)+"px";
   pop.classList.add('show');
+  positionWhoPop(r);
+}
+
+// ポップの位置決め：下に入りきらなければ上に出す。リストは残りスペースに収める
+function positionWhoPop(r){
+  const pop=document.getElementById('pop');
+  const list=pop.querySelector('.pop-list');
+  const margin=8;
+  // まずリストのmax-heightをいったん解除して実寸を測る
+  if(list) list.style.maxHeight="none";
+  const head=pop.querySelector('.pophead');
+  const actions=pop.querySelector('.pop-actions');
+  const fixedH=(head?head.offsetHeight:0)+(actions?actions.offsetHeight:0)+16;
+  const spaceBelow=window.innerHeight-r.bottom-margin;
+  const spaceAbove=r.top-margin;
+  // 下と上で広い方を使う
+  const useAbove = spaceBelow < 220 && spaceAbove > spaceBelow;
+  const avail=(useAbove?spaceAbove:spaceBelow)-fixedH;
+  if(list) list.style.maxHeight=Math.max(120,Math.min(avail, 380))+"px";
+  const popH=pop.offsetHeight;
+  let top = useAbove ? (r.top-4-popH) : (r.bottom+4);
+  top=Math.max(margin, Math.min(top, window.innerHeight-margin-popH));
+  let left=Math.min(r.left, window.innerWidth-pop.offsetWidth-margin);
+  left=Math.max(margin,left);
+  pop.style.left=left+"px";
+  pop.style.top=top+"px";
 }
 
 // 集団研修用：この項目の担当者を、すでに○か△が入っている研修生だけにまとめて適用する
