@@ -265,7 +265,21 @@
   .datebtn.set{color:var(--sub);font-weight:600}
   .cmtbtn{font-size:14.5px;background:none;border:none;padding:0 2px;cursor:pointer;color:#c0cad3;line-height:1}
   .cmtbtn:hover{color:var(--brand)}
-  .cmtbtn.set{color:var(--warn)}
+  /* コメントあり：赤い吹き出し（視認性を上げるためCSSで描画） */
+  .cmtbtn.set{
+    display:inline-block;width:19px;height:15px;padding:0;background:#e0342f;
+    border-radius:5px;position:relative;vertical-align:middle;
+    box-shadow:0 1px 3px rgba(224,52,47,.5);
+  }
+  .cmtbtn.set::before{ /* 吹き出し内の白い文字（2本線）風 */
+    content:"";position:absolute;left:4px;right:4px;top:4px;height:2px;
+    background:#fff;border-radius:1px;box-shadow:0 4px 0 #fff;
+  }
+  .cmtbtn.set::after{ /* 左下のしっぽ */
+    content:"";position:absolute;left:3px;bottom:-3px;width:0;height:0;
+    border-style:solid;border-width:4px 5px 0 0;border-color:#e0342f transparent transparent transparent;
+  }
+  .cmtbtn.set:hover{background:#c62b26}
   .whobtn{font-size:13px;color:var(--sub);background:var(--bg);border:1px solid var(--line);border-radius:7px;min-width:36px;min-height:25px;padding:3px 7px;cursor:pointer;max-width:104px;white-space:normal;word-break:break-all;line-height:1.35}
   .whobtn:hover{border-color:var(--brand);background:#eef4f8}
   .whobtn.set{color:var(--doc);background:var(--doc-bg);border-color:transparent;font-weight:600}
@@ -1111,7 +1125,7 @@ function render(){
         <button class="stbtn ${stClass(v)}" onclick="cycle(${it.id},'${n}')">${v||"·"}</button>
         <div class="cellrow">
           <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},'${n}')">${dtShort||"日付"}</button>
-          <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},'${n}')" title="${memoTip.replace(/"/g,'&quot;')}">${memoOn?"💬":"🗨"}</button>
+          <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},'${n}')" title="${memoTip.replace(/"/g,'&quot;')}">${memoOn?"":"🗨"}</button>
         </div>
         <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},'${n}')" title="${who.replace(/"/g,'&quot;')}">${who?who:""}</button>
       </div></td>`;
@@ -1377,8 +1391,10 @@ function updateCmtBadge(){
   b.style.display=n?"flex":"none";
   b.textContent=n>99?"99+":n;
 }
-// 「確認」＝今あるコメントを全部見たことにする。バッジだけ消え、コメント本体は残る
+// 「確認」＝今あるコメントを全部見たことにする。バッジだけ消え、コメント本体は残る。
+// 確認できるのは管理担当者（武藤・中嶋）のみ。
 function ackComments(){
+  if(!canManageComments()){ toast("確認（バッジ消し）は武藤・中嶋のみ行えます"); return; }
   localStorage.setItem('ackComments',JSON.stringify(commentSignatures()));
   updateCmtBadge();
   openComments(); // 一覧の「新着」表示を更新
@@ -1397,9 +1413,9 @@ function openComments(){
       <span class="cm"><span class="cm-au">✍${escI(e.author)}</span>${escI(e.memo)}</span>
     </div>`;
   }).join(''):'<div class="empty-note">コメントはまだありません</div>';
-  // フッターの「確認」ボタンの出し分け
+  // フッターの「確認」ボタンの出し分け（未確認あり かつ 武藤・中嶋のときだけ）
   const ackBtn=document.getElementById('ackCommentsBtn');
-  if(ackBtn) ackBtn.style.display=unseenCommentCount()?"inline-flex":"none";
+  if(ackBtn) ackBtn.style.display=(unseenCommentCount()&&canManageComments())?"inline-flex":"none";
   openModal('modalComments');
 }
 
