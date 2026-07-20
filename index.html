@@ -226,8 +226,6 @@
   tbody tr:hover td{background:#f8fbfd}
   tbody tr:hover .col-cat,tbody tr:hover .col-item{background:#f8fbfd}
   .itemname{font-weight:500}
-  /* 紙の研修ファイル由来の「管理者確認」欄（Excel出力の管理者確認列と同じもの） */
-  .legacy-admin{font-size:11.5px;color:#9aa7b3;margin-top:2px}
   tr.catstart td{border-top:2px solid var(--line)}
   .catlabel{padding-top:11px}
 
@@ -721,6 +719,10 @@ window.applyRemoteState = function(remote){
   state.items = remote.items;
   state.archived = remote.archived || [];
   state.log = remote.log || [];
+  // 古い「管理者確認」データ(admin)はもう使わないので取り除く。
+  // DB上にも残っていれば、この後で一度だけ保存して完全に消す。
+  let hadAdmin=false;
+  state.items.forEach(it=>{ if(it.admin){ hadAdmin=true; } delete it.admin; });
   // 欠けているマップを補完
   _uid = state.items.reduce((m,it)=>Math.max(m, it.id||0), 0)+1;
   state.items.forEach(it=>{
@@ -729,6 +731,9 @@ window.applyRemoteState = function(remote){
   });
   savedSnapshot = JSON.stringify(state);
   render();
+  // DB上に古いadminが残っていたら、一度だけ保存して完全に削除する。
+  // （fbSave側が_applyingRemote中の保存を無視するので、次のフレームで呼ぶ）
+  if(hadAdmin) setTimeout(()=>{ save(); }, 0);
 };
 
 // 接続ステータス表示
@@ -918,7 +923,7 @@ function render(){
     shown++;
     html+=`<tr class="${isNew?'catstart':''}" data-id="${it.id}"${isNew?` data-cat="${it.cat.replace(/"/g,'&quot;')}"`:''}>`;
     if(isNew){html+=`<td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▼</span>${it.cat}</td>`;lastCat=it.cat;}else{html+=`<td class="col-cat"></td>`;}
-    html+=`<td class="col-item"><span class="itemname">${it.item}</span>${it.admin?`<div class="legacy-admin">管理者確認：${it.admin}</div>`:""}</td>`;
+    html+=`<td class="col-item"><span class="itemname">${it.item}</span></td>`;
     names.forEach(n=>{
       const v=it.vals[n]||"";const who=it.who[n]||"";const dt=it.date[n]||"";const memo=it.memo[n]||"";
       const dtShort=dt?dt.replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):"";
@@ -1125,7 +1130,7 @@ function onItemDropCat(e,cat){
 }
 function renameCat(oldC,newC){newC=(newC||"").trim();if(!newC)return;state.items.forEach(it=>{if(it.cat===oldC)it.cat=newC;});save();renderItemEditor();}
 function delCat(cat){const cnt=state.items.filter(i=>i.cat===cat).length;if(!confirm(`カテゴリ「${cat}」と、その中の${cnt}項目をすべて削除しますか？`))return;state.items=state.items.filter(i=>i.cat!==cat);save();renderItemEditor();toast(`「${cat}」を削除しました`);}
-function addCat(){const inp=document.getElementById('newCat');const nm=(inp.value||"").trim();if(!nm)return;const it={id:_uid++,cat:nm,item:"新しい項目",admin:"",vals:{},who:{},date:{},memo:{}};state.names.forEach(n=>{it.vals[n]="";it.who[n]="";it.date[n]="";it.memo[n]="";});state.items.push(it);inp.value="";save();renderItemEditor();toast(`カテゴリ「${nm}」を追加`);}
+function addCat(){const inp=document.getElementById('newCat');const nm=(inp.value||"").trim();if(!nm)return;const it={id:_uid++,cat:nm,item:"新しい項目",vals:{},who:{},date:{},memo:{}};state.names.forEach(n=>{it.vals[n]="";it.who[n]="";it.date[n]="";it.memo[n]="";});state.items.push(it);inp.value="";save();renderItemEditor();toast(`カテゴリ「${nm}」を追加`);}
 function renameItem(id,v){v=(v||"").trim();if(!v)return;const it=state.items.find(x=>x.id===id);it.item=v;save();}
 function moveItem(id,dir){
   const it=state.items.find(x=>x.id===id);
@@ -1139,7 +1144,7 @@ function moveItem(id,dir){
   save();renderItemEditor();
 }
 function delItem(id){const it=state.items.find(x=>x.id===id);if(!confirm(`「${it.item}」を削除しますか？`))return;state.items=state.items.filter(x=>x.id!==id);save();renderItemEditor();}
-function addItem(cat,v){v=(v||"").trim();if(!v)return;const it={id:_uid++,cat:cat,item:v,admin:"",vals:{},who:{},date:{},memo:{}};state.names.forEach(n=>{it.vals[n]="";it.who[n]="";it.date[n]="";it.memo[n]="";});
+function addItem(cat,v){v=(v||"").trim();if(!v)return;const it={id:_uid++,cat:cat,item:v,vals:{},who:{},date:{},memo:{}};state.names.forEach(n=>{it.vals[n]="";it.who[n]="";it.date[n]="";it.memo[n]="";});
   // insert right after last item of that cat
   let idx=-1;state.items.forEach((x,i)=>{if(x.cat===cat)idx=i;});
   if(idx>=0)state.items.splice(idx+1,0,it);else state.items.push(it);
@@ -1430,12 +1435,11 @@ async function buildExcelWorkbook(){
       if(noteParts.length) c.note=noteParts.join("\n");
     });
 
-    // 管理者確認欄：セルに付けた担当者（複数可）を全員分まとめて表示。
-    // 誰も付いていない項目は、従来の項目ごとの担当（it.admin）を表示する
+    // 管理者確認欄：セルに付けた担当者（複数可）を全員分まとめて表示
     const whoSet=new Set();
     names.forEach(n=>String((it.who&&it.who[n])||"").split("・").filter(Boolean).forEach(w=>whoSet.add(w)));
     const adminCell=ws.getCell(r,lastCol);
-    adminCell.value=whoSet.size?[...whoSet].join("・"):(it.admin||"");
+    adminCell.value=[...whoSet].join("・");
     adminCell.font={name:FONT,size:9.5,color:{argb:"FF5B6B7A"}};
     adminCell.alignment={horizontal:"center",vertical:"middle"};
     adminCell.border=(r===catStart)?{...border,top:catTop}:border;
