@@ -839,7 +839,7 @@ function openWho(ev,id,name){
   state.admins.forEach(a=>{
     h+=`<label class="pop-check"><input type="checkbox" value="${a.replace(/"/g,'&quot;')}" ${cur.includes(a)?"checked":""} onchange="whoChanged()"> ${a}</label>`;
   });
-  h+=`<button class="clear" style="color:var(--brand)" onclick="applyWhoToRow()">⇒ この項目の全員に同じ担当を適用</button>`;
+  h+=`<button class="clear" style="color:var(--brand)" onclick="applyWhoToRow()">⇒ ○△が付いた人に同じ担当を一括適用</button>`;
   h+=`<button class="clear" onclick="clearWho()">（クリア）</button>`;
   pop.innerHTML=h;
   pop.style.left=Math.min(r.left,window.innerWidth-190)+"px";
@@ -847,18 +847,24 @@ function openWho(ev,id,name){
   pop.classList.add('show');
 }
 
-// 集団研修用：この項目の担当者を、全員（表示中の研修生）にまとめて適用する
+// 集団研修用：この項目の担当者を、すでに○か△が入っている研修生だけにまとめて適用する
+// （まだ実施していない＝空欄や―の人には入れない）
 function applyWhoToRow(){
   if(!popTarget)return;
   const it=state.items.find(x=>x.id===popTarget.id);
   if(!it)return;
   const v=it.who[popTarget.name]||"";
-  activeNames().forEach(n=>{ it.who[n]=v; });
+  const targets=activeNames().filter(n=>{ const s=it.vals[n]||""; return s==="○"||s==="▲"; });
+  if(!targets.length){
+    toast("○か△が付いている人がいないため、適用しませんでした");
+    return;
+  }
+  targets.forEach(n=>{ it.who[n]=v; });
   whoDirty=false; popBtnEl=null;   // closeAllPops側の二重処理を防ぐ
-  logChange(`${it.item}：全員の担当者を「${v||"なし"}」に一括設定`);
+  logChange(`${it.item}：○△が付いた${targets.length}名の担当者を「${v||"なし"}」に一括設定`);
   document.getElementById('pop').classList.remove('show');
   save(); render();
-  toast(v?`この項目の全員の担当を「${v}」にしました`:"この項目の全員の担当をクリアしました");
+  toast(v?`○△が付いた${targets.length}名の担当を「${v}」にしました`:`○△が付いた${targets.length}名の担当をクリアしました`);
 }
 function whoChanged(){
   if(!popTarget)return;
