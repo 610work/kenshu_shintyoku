@@ -896,9 +896,8 @@ function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   document.getElementById('cpopText').value=memoText(memoMap(it,name)[author]);
   const cp=document.getElementById('cpop');
   const r=ev.target.getBoundingClientRect();
-  cp.style.left=Math.min(r.left,window.innerWidth-300)+"px";
-  cp.style.top=Math.min(r.bottom+4,window.innerHeight-260)+"px";
   cp.classList.add('show');
+  positionPopover(cp, r, document.getElementById('cpopOthers'), {minList:60,maxList:220});
   setTimeout(()=>document.getElementById('cpopText').focus(),50);
 }
 // 他の担当者のコメントを一覧表示（管理担当者には削除ボタンつき）
@@ -1018,21 +1017,18 @@ function openWho(ev,id,name){
 }
 
 // ポップの位置決め：下に入りきらなければ上に出す。リストは残りスペースに収める
-function positionWhoPop(r){
-  const pop=document.getElementById('pop');
-  const list=pop.querySelector('.pop-list');
-  const margin=8;
-  // まずリストのmax-heightをいったん解除して実寸を測る
-  if(list) list.style.maxHeight="none";
-  const head=pop.querySelector('.pophead');
-  const actions=pop.querySelector('.pop-actions');
-  const fixedH=(head?head.offsetHeight:0)+(actions?actions.offsetHeight:0)+16;
+// ポップの位置決め（汎用）：中のスクロール要素を残りスペースに収め、
+// 下に入りきらなければ上に出す。scrollEl=内部でスクロールさせたい要素。
+function positionPopover(pop, r, scrollEl, opts){
+  opts=opts||{};
+  const margin=8, minList=opts.minList||90, maxList=opts.maxList||360;
+  if(scrollEl) scrollEl.style.maxHeight="none"; // まず実寸で測る
+  const fixedH=pop.offsetHeight-(scrollEl?scrollEl.offsetHeight:0);
   const spaceBelow=window.innerHeight-r.bottom-margin;
   const spaceAbove=r.top-margin;
-  // 下と上で広い方を使う
-  const useAbove = spaceBelow < 220 && spaceAbove > spaceBelow;
-  const avail=(useAbove?spaceAbove:spaceBelow)-fixedH;
-  if(list) list.style.maxHeight=Math.max(120,Math.min(avail, 380))+"px";
+  const useAbove = spaceBelow < (opts.flipThreshold||220) && spaceAbove>spaceBelow;
+  const avail=(useAbove?spaceAbove:spaceBelow)-fixedH-8;
+  if(scrollEl) scrollEl.style.maxHeight=Math.max(minList,Math.min(avail,maxList))+"px";
   const popH=pop.offsetHeight;
   let top = useAbove ? (r.top-4-popH) : (r.bottom+4);
   top=Math.max(margin, Math.min(top, window.innerHeight-margin-popH));
@@ -1040,6 +1036,10 @@ function positionWhoPop(r){
   left=Math.max(margin,left);
   pop.style.left=left+"px";
   pop.style.top=top+"px";
+}
+function positionWhoPop(r){
+  const pop=document.getElementById('pop');
+  positionPopover(pop, r, pop.querySelector('.pop-list'), {minList:120,maxList:380});
 }
 
 // 集団研修用：この項目の担当者を、すでに○か△が入っている研修生だけにまとめて適用する
