@@ -201,7 +201,17 @@
   .catnav-btn:hover{background:var(--bg);color:var(--brand)}
   .catnav-btn.closed{color:#9aa7b3}
   .catnav-btn.closed::before{content:"▶ ";font-size:9px}
-  @media(max-width:900px){.catnav{display:none}}
+  /* スマホ・狭い画面：カテゴリメニューを表の上の横スクロールバーにする */
+  @media(max-width:900px){
+    .layout{flex-direction:column;gap:8px}
+    .catnav{
+      position:sticky;top:auto;flex:none;width:100%;max-height:none;
+      display:flex;gap:4px;overflow-x:auto;padding:7px 8px;border-radius:10px;
+      -webkit-overflow-scrolling:touch;
+    }
+    .catnav-h{display:none}
+    .catnav-btn{width:auto;flex:0 0 auto;font-size:12.5px;padding:6px 11px;background:var(--bg);border-radius:20px}
+  }
   /* ジャンプ先のカテゴリを一瞬ハイライト */
   tr.jumpflash td{background:#fff3d6 !important;transition:background .3s}
   .tablecard{background:var(--panel);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--line)}
@@ -295,6 +305,40 @@
   .diffrow .chg{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;color:var(--sub)}
   .import-skip{margin-top:14px;font-size:12.5px;color:#b23b3b;line-height:1.7;background:#fdeaea;
     border-radius:9px;padding:10px 12px}
+
+  /* コメント数の赤バッジ（iPhoneの通知風） */
+  .redbadge{
+    position:absolute;top:-7px;right:-7px;background:#e0342f;color:#fff;
+    border-radius:999px;font-size:11px;font-weight:700;min-width:19px;height:19px;
+    display:flex;align-items:center;justify-content:center;padding:0 5px;
+    box-shadow:0 1px 4px rgba(224,52,47,.5);pointer-events:none;
+  }
+  /* コメント一覧の行 */
+  .cmtrow{
+    display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line);
+    border-radius:9px;margin-bottom:7px;background:#fff;cursor:pointer;font-size:13.5px;
+  }
+  .cmtrow:hover{border-color:var(--brand);background:#f8fbfd}
+  .cmtrow .cw{font-weight:700;flex-shrink:0;min-width:64px}
+  .cmtrow .ci{color:var(--sub);font-size:12px;flex-shrink:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cmtrow .cm{flex:1;color:var(--ink);line-height:1.5;word-break:break-all}
+  /* 履歴の行 */
+  .histrow{display:flex;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line2);font-size:13px;align-items:baseline}
+  .histrow .ht{color:#9aa7b3;flex-shrink:0;font-size:12px;min-width:76px;font-variant-numeric:tabular-nums}
+  .histrow .ho{color:var(--doc);font-weight:600;flex-shrink:0;min-width:60px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .histrow .hx{flex:1;word-break:break-all}
+  /* 修了した研修生の行 */
+  .listrow.archived{background:#f4f6f8;color:var(--sub)}
+  /* 操作者の選択ボタン */
+  .op-choice{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;
+    padding:10px 14px;border-radius:9px;margin-bottom:7px;font-size:14.5px;cursor:pointer;font-weight:600}
+  .op-choice:hover{border-color:var(--brand);color:var(--brand)}
+  /* 項目編集のドラッグ移動 */
+  .itemrow{cursor:grab}
+  .itemrow.dragging{opacity:.4}
+  .itemrow.dragover{box-shadow:0 -2px 0 var(--brand)}
+  .catgroup-b.dragover{background:#eef4f8}
+  .drag-grip{color:#c0cad3;cursor:grab;flex-shrink:0;font-size:14px;user-select:none}
 
   /* who picker popover */
   .pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 12px 32px rgba(0,0,0,.2);padding:6px;min-width:150px;display:none}
@@ -394,6 +438,7 @@
         <svg viewBox="0 0 20 20"><path d="M8 4a4 4 0 103.2 6.4l3.1 3.1 1.4-1.4-3.1-3.1A4 4 0 008 4zm0 2a2 2 0 110 4 2 2 0 010-4z"/></svg>
         <input id="search" placeholder="項目を検索…" oninput="render()">
       </div>
+      <button class="btn" style="position:relative" onclick="openComments()" title="コメントが入っている箇所の一覧。クリックでその項目へ移動できます">🗨 コメント<span class="redbadge" id="cmtBadge" style="display:none"></span></button>
       <button class="btn" onclick="openTrainees()">研修生を管理</button>
       <button class="btn" onclick="openAdmins()">担当者を管理</button>
       <button class="btn" onclick="openItems()">項目を編集</button>
@@ -401,6 +446,9 @@
       <button class="btn" onclick="exportExcel()" title="紙の研修ファイルと同じ形式のExcelを書き出します（A4縦印刷設定済み）">Excel出力</button>
       <button class="btn" onclick="importExcelFile()" title="店舗などで記入されたExcelを読み込み、ネット上のデータとの違いを確認してから反映します">Excel取込</button>
       <button class="btn" onclick="exportData()" title="現在のデータをJSONファイルで手元に保存">バックアップ</button>
+      <button class="btn" onclick="importBackup()" title="バックアップ(JSON)からデータを復元します">復元</button>
+      <button class="btn" onclick="openHistory()" title="変更履歴（誰がいつ何を変えたか）">履歴</button>
+      <button class="btn" id="opBtn" onclick="openOperator()" title="操作している人の名前（履歴に記録されます）">👤 —</button>
       <button class="btn" onclick="if(confirm('ログアウトしますか？'))window.fbLogout()">ログアウト</button>
     </div>
     <div class="subbar">
@@ -504,6 +552,39 @@
   </div>
 </div>
 
+<div class="modal-bg" id="modalComments">
+  <div class="modal">
+    <div class="modal-h"><h2>🗨 コメント一覧</h2><button class="modal-x" onclick="closeModal('modalComments')">×</button></div>
+    <div class="modal-b">
+      <div class="subhead">クリックすると、その研修項目に移動します</div>
+      <div id="commentList"></div>
+    </div>
+    <div class="modal-f"><button class="btn primary" onclick="closeModal('modalComments')">閉じる</button></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalHistory">
+  <div class="modal">
+    <div class="modal-h"><h2>変更履歴</h2><button class="modal-x" onclick="closeModal('modalHistory')">×</button></div>
+    <div class="modal-b">
+      <div class="subhead">新しい順に最大150件を表示します</div>
+      <div id="historyList"></div>
+    </div>
+    <div class="modal-f"><button class="btn primary" onclick="closeModal('modalHistory')">閉じる</button></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalOperator">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-h"><h2>👤 あなたの名前を選んでください</h2></div>
+    <div class="modal-b">
+      <div class="subhead">変更履歴に「誰が変えたか」を記録するために使います（この端末に記憶されます）</div>
+      <div id="operatorChoices"></div>
+      <div class="addrow"><input id="operatorInput" placeholder="一覧にない場合は名前を入力" onkeydown="if(event.key==='Enter')pickOperator(this.value)"><button class="btn primary" onclick="pickOperator(document.getElementById('operatorInput').value)">決定</button></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modalImport">
   <div class="modal" style="max-width:640px">
     <div class="modal-h"><h2>Excel取込：変更内容の確認</h2><button class="modal-x" onclick="cancelImport()">×</button></div>
@@ -526,6 +607,21 @@ const CYCLE = ["", "○", "▲", "―", "書"];
 const DATA = {"names": ["満間", "古宇田", "堀", "正代", "イマン"], "items": [{"id": 0, "cat": "挨拶", "item": "本人写真の撮影", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 1, "cat": "挨拶", "item": "自己紹介・挨拶メール", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "○"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 2, "cat": "歴史・経営理念", "item": "ゴトウスバルの歴史", "admin": "社長", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "○"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 3, "cat": "歴史・経営理念", "item": "経営理念", "admin": "社長", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "○"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 4, "cat": "店舗説明", "item": "アップル店舗", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 5, "cat": "店舗説明", "item": "トラック市店舗", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 6, "cat": "店舗説明", "item": "社内各店舗の特徴", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 7, "cat": "店舗説明", "item": "本部・加盟店", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "○"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 8, "cat": "店舗環境", "item": "繁盛感の演出・のぼり旗", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 9, "cat": "店舗環境", "item": "競合他社との見比べ", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 10, "cat": "店舗環境", "item": "展示場の見せ方・並べ方", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 11, "cat": "マナー", "item": "一般常識・マナー", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 12, "cat": "マナー", "item": "身だしなみ", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 13, "cat": "マナー", "item": "名刺の渡し方", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 14, "cat": "マナー", "item": "礼状", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 15, "cat": "マナー", "item": "挨拶・お出迎え・お見送り", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 16, "cat": "店舗雑務", "item": "店舗清掃", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 17, "cat": "店舗雑務", "item": "店舗での買い物", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 18, "cat": "システム管理", "item": "その他項目の説明（保存庫・他）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 19, "cat": "システム管理", "item": "手当の説明", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 20, "cat": "システム管理", "item": "査定管理システムの内容説明", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 21, "cat": "システム管理", "item": "査定管理システム入力の仕方", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 22, "cat": "システム管理", "item": "求める社員（守破離）", "admin": "社長", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "○"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 23, "cat": "知識", "item": "第一印象（メラビアンの法則)", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "▲", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 24, "cat": "知識", "item": "自身の強みをつくる（ハロー効果）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 25, "cat": "知識", "item": "社会人としての文章マナー（文章の書き方）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 26, "cat": "知識", "item": "社会人としての文章NG（文章NG集）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "▲", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 27, "cat": "知識", "item": "リピーターを増やすには（利用可能性ヒューリステック）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 28, "cat": "知識", "item": "商談の基礎（伝え方が9割）", "admin": "", "vals": {"満間": "○", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 29, "cat": "知識", "item": "価格提示の基礎（アンカリング効果）", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "▲", "正代": "○", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 30, "cat": "知識", "item": "サービス業の基礎マニュアル（小売り・サービス業　基本スキル）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 31, "cat": "知識", "item": "相手に伝わりやすい伝え方（5W1H）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 32, "cat": "知識", "item": "成功するための考え方（ロジカルシンキング ）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 33, "cat": "知識", "item": "感謝の気持ち（返報性の原理）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 34, "cat": "知識", "item": "やり遂げる心（一貫性の原理）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 35, "cat": "知識", "item": "社会用語（ビジネス基礎用語）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 36, "cat": "ホームページ", "item": "HPの更新", "admin": "", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 37, "cat": "ホームページ", "item": "ブログ掲載", "admin": "武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 38, "cat": "メール・電話対応", "item": "出張査定の対応（TEL・メール）", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 39, "cat": "メール・電話対応", "item": "問い合わせ電話対応", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 40, "cat": "査定", "item": "車の各部位パーツ名", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 41, "cat": "査定", "item": "タイヤ＆アルミの説明", "admin": "", "vals": {"満間": "○", "古宇田": "", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 42, "cat": "査定", "item": "ナビ・TVの説明", "admin": "", "vals": {"満間": "▲", "古宇田": "", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 43, "cat": "査定", "item": "安全装備の説明", "admin": "中", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "▲", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 44, "cat": "査定", "item": "査定の流れ", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 45, "cat": "査定", "item": "エンジンルーム内の部位説明", "admin": "充", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 46, "cat": "査定", "item": "重大瑕疵（メーター・冠水・接合車等）", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 47, "cat": "査定", "item": "バッテリーの繋げ方・オイル状態・機関のチェック", "admin": "", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 48, "cat": "査定", "item": "塗装状態の判別", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 49, "cat": "査定", "item": "修復判断", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 50, "cat": "査定", "item": "査定記号と査定書の書き方", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 51, "cat": "査定", "item": "評価点の付け方", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 52, "cat": "査定", "item": "セールスポイント", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 53, "cat": "査定", "item": "本部プライシングシステム・メーターチェック", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 54, "cat": "査定", "item": "グレード検索の仕方", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 55, "cat": "査定", "item": "コーションプレート", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 56, "cat": "査定", "item": "輸入車シリアルナンバー", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 57, "cat": "ミステリーショッパー", "item": "リアルショップリサーチ", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 58, "cat": "ミステリーショッパー", "item": "ミステリーショッパー実践", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 59, "cat": "ミステリーショッパー", "item": "レポート提出", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": "―"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 60, "cat": "共有取り組み", "item": "他店の取り組み", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 61, "cat": "共有取り組み", "item": "共有取り組みシート", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 62, "cat": "オークション", "item": "各会場の説明", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 63, "cat": "オークション", "item": "オークション会場見学", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "○"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 64, "cat": "オークション", "item": "オークションの流れ", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": "▲"}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 65, "cat": "オークション", "item": "会場別出品表の書き方", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 66, "cat": "商談", "item": "シナリオマスターの重要ポイント", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 67, "cat": "商談", "item": "シナリオマスター　スタンダード編 ロープレ", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 68, "cat": "商談", "item": "シナリオマスター　他社比較編　ヒアリング", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 69, "cat": "商談", "item": "シナリオマスター　決裁者不在編　ヒアリング", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 70, "cat": "商談", "item": "シナリオマスター　次車未定編　ヒアリング", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 71, "cat": "商談", "item": "店長・先輩スタッフの商談を聴く", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 72, "cat": "商談", "item": "商談ロープレ", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 73, "cat": "書類", "item": "車検証の見方", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 74, "cat": "書類", "item": "普通自動車：本人所有", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 75, "cat": "書類", "item": "普通自動車：所有権付", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 76, "cat": "書類", "item": "軽自動車：本人所有", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 77, "cat": "書類", "item": "軽自動車：所有権付", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 78, "cat": "書類", "item": "相続書類", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 79, "cat": "書類", "item": "所有権解除・ローン一括完済", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 80, "cat": "書類", "item": "名義変更", "admin": "武藤", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 81, "cat": "書類", "item": "抹消", "admin": "武藤", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 82, "cat": "書類", "item": "移転同抹", "admin": "武藤", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 83, "cat": "書類", "item": "車庫証明（書類・デジタル）", "admin": "中・武藤", "vals": {"満間": "書", "古宇田": "書", "堀": "書", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 84, "cat": "写真撮影", "item": "写真の撮り方　（外装）", "admin": "中・岡", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "▲", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 85, "cat": "写真撮影", "item": "写真の撮り方　（内装）", "admin": "中・岡", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "▲", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 86, "cat": "業販用ネット掲載", "item": "オートサーバー掲載", "admin": "岡", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 87, "cat": "業販用ネット掲載", "item": "ストックワンプラ掲載", "admin": "岡", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 88, "cat": "業販用ネット掲載", "item": "オークネット掲載", "admin": "", "vals": {"満間": "▲", "古宇田": "▲", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 89, "cat": "業販用ネット掲載", "item": "JUテントリ・クイッククイック掲載", "admin": "", "vals": {"満間": "▲", "古宇田": "", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 90, "cat": "業販用ネット掲載", "item": "GOOの掲載", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 91, "cat": "業販用ネット掲載", "item": "カーセンサーの掲載", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 92, "cat": "業販用ネット掲載", "item": "GSネット活用法", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 93, "cat": "一般小売販売", "item": "販売車輌の諸経費", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 94, "cat": "一般小売販売", "item": "見積書・注文書の作成", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 95, "cat": "一般小売販売", "item": "保証の説明", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 96, "cat": "一般小売販売", "item": "ローン取扱いの注意点", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 97, "cat": "一般小売販売", "item": "小売りロープレ", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 98, "cat": "トラック", "item": "トラックの種類", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 99, "cat": "トラック", "item": "機能・装備の基礎知識", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 100, "cat": "パソコン講座", "item": "Excel　POP作成・プライスボード", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 101, "cat": "パソコン講座", "item": "Excel　ドリンクメニュー表作成", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 102, "cat": "パソコン講座", "item": "Excel　簡単な計算式", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 103, "cat": "パソコン講座", "item": "PowerPoint　使い方", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "○", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 104, "cat": "動画", "item": "G2Mクラウド", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 105, "cat": "動画", "item": "シナリオマスター", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 106, "cat": "ナンバー", "item": "ナンバーの色", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 107, "cat": "ナンバー", "item": "希望ナンバー・抽選ナンバー", "admin": "中・武藤", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 108, "cat": "契約書", "item": "契約書", "admin": "中", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 109, "cat": "契約書", "item": "自税覚書", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 110, "cat": "契約書", "item": "代車借用書", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 111, "cat": "契約書", "item": "各振込依頼書", "admin": "", "vals": {"満間": "○", "古宇田": "○", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 112, "cat": "車輌仕上げ", "item": "外装仕上げ(洗車・バフ・モール艶だし）", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 113, "cat": "車輌仕上げ", "item": "内装仕上げ", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 114, "cat": "車輌仕上げ", "item": "エンジンルームの仕上げ", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 115, "cat": "自賠責・税", "item": "自賠責保険", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 116, "cat": "自賠責・税", "item": "重量税", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 117, "cat": "自賠責・税", "item": "自動車税", "admin": "中・武藤", "vals": {"満間": "▲", "古宇田": "▲", "堀": "▲", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 118, "cat": "自賠責・税", "item": "リサイクル料", "admin": "中・武藤", "vals": {"満間": "○", "古宇田": "○", "堀": "○", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 119, "cat": "事務", "item": "店舗管理表（A・B・C）", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 120, "cat": "事務", "item": "自賠責請求の記入", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 121, "cat": "事務", "item": "自賠責請求の名義変更・解約・還付手続き", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 122, "cat": "事務", "item": "車庫証明警察署での手続き", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 123, "cat": "事務", "item": "希望ナンバー振込業務", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 124, "cat": "事務", "item": "お客様送り・書類回収", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 125, "cat": "事務", "item": "オークション書類落札確認・発送手配", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 126, "cat": "事務", "item": "陸運局・登録の流れ", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 127, "cat": "事務", "item": "JUへの書類セット", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 128, "cat": "事務", "item": "乗用車名義変更", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 129, "cat": "事務", "item": "乗用車抹消（移転・輸出・永久）", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 130, "cat": "事務", "item": "軽自動車名義変更", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 131, "cat": "事務", "item": "軽自動車抹消（移転・輸出・永久）", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 132, "cat": "事務", "item": "毎月20日締の振込依頼", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 133, "cat": "事務", "item": "自動車税の還付手続き", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 134, "cat": "事務", "item": "自動車税の還付データ入力", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 135, "cat": "事務", "item": "入庫車のデータ入力・振込", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 136, "cat": "事務", "item": "営業証明", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 137, "cat": "事務", "item": "領収書", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 138, "cat": "事務", "item": "伝票処理", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 139, "cat": "事務", "item": "勘定科目", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 140, "cat": "事務", "item": "収入印紙添付", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 141, "cat": "事務", "item": "消費税課税区分", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}, {"id": 142, "cat": "事務", "item": "月次資料", "admin": "", "vals": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}, "who": {"満間": "", "古宇田": "", "堀": "", "正代": "", "イマン": ""}}], "admins": ["中嶋", "社長", "武藤", "岡崎"]};
 let state = JSON.parse(JSON.stringify(DATA));
 if(!state.admins) state.admins = ['中嶋','社長','武藤','岡崎'];
+if(!state.archived) state.archived = []; // 修了した研修生（表からは隠すが記録は残す）
+if(!state.log) state.log = [];           // 変更履歴（最新300件）
+
+// 表示・出力対象の研修生（修了者を除く）
+function activeNames(){ return state.names.filter(n=>!(state.archived||[]).includes(n)); }
+
+// 操作している人の名前（端末ごとに記憶）
+function getOperator(){ return localStorage.getItem('operatorName')||""; }
+
+// 変更履歴に1件追加（誰が・いつ・何をしたか）
+function logChange(txt){
+  if(!state.log) state.log=[];
+  state.log.push({ t: Date.now(), op: getOperator()||"名前未設定", txt: String(txt).slice(0,120) });
+  if(state.log.length>300) state.log=state.log.slice(-300);
+}
 // ensure who map exists
 let _uid = state.items.reduce((m,it)=>Math.max(m,it.id),0)+1;
 state.items.forEach(it=>{ if(!it.who) it.who={}; if(!it.date) it.date={}; if(!it.memo) it.memo={}; state.names.forEach(n=>{ if(!(n in it.who)) it.who[n]=''; if(!(n in it.date)) it.date[n]=''; if(!(n in it.memo)) it.memo[n]=''; }); });
@@ -563,6 +659,9 @@ window.onLoggedIn=function(){
   document.getElementById('gateLoading').style.display='none';
   document.getElementById('app').style.display='block';
   render();
+  updateOpBtn();
+  // 操作者名が未設定なら、最初に選んでもらう（履歴の記録に使う）
+  if(!getOperator()) setTimeout(openOperator,400);
 };
 // 未ログイン → ログイン画面表示
 window.onLoggedOut=function(){
@@ -595,7 +694,8 @@ window.addEventListener('DOMContentLoaded',()=>{
 
 // state を保存用のプレーンなオブジェクトに変換
 function serializeState(){
-  return { names: state.names, admins: state.admins, items: state.items, _updated: Date.now() };
+  return { names: state.names, admins: state.admins, items: state.items,
+    archived: state.archived||[], log: state.log||[], _updated: Date.now() };
 }
 window.serializeState = serializeState;
 
@@ -605,6 +705,8 @@ window.applyRemoteState = function(remote){
   state.names = remote.names || state.names;
   state.admins = remote.admins || state.admins;
   state.items = remote.items;
+  state.archived = remote.archived || [];
+  state.log = remote.log || [];
   // 欠けているマップを補完
   _uid = state.items.reduce((m,it)=>Math.max(m, it.id||0), 0)+1;
   state.items.forEach(it=>{
@@ -635,6 +737,7 @@ function stClass(v){return v==="○"?"st-ok":v==="▲"?"st-warn":v==="―"?"st-s
 function cycle(id,name){const it=state.items.find(x=>x.id===id);const cur=it.vals[name]||"";const next=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];it.vals[name]=next;
   // 初めて○か▲が入った時、日付が未設定なら今日を記録
   if((next==="○"||next==="▲") && !it.date[name]) it.date[name]=todayStr();
+  logChange(`${name}／${it.item}：「${cur||"空欄"}」→「${next||"空欄"}」`);
   save();render();}
 let dpopTarget=null;
 function editDate(ev,id,name){ev.stopPropagation();closeAllPops();
@@ -649,8 +752,8 @@ function editDate(ev,id,name){ev.stopPropagation();closeAllPops();
   dp.classList.add('show');
   setTimeout(()=>{try{inp.showPicker&&inp.showPicker();}catch(e){}},50);
 }
-function applyDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);it.date[dpopTarget.name]=document.getElementById('dpopInput').value||"";}closeAllPops();save();render();}
-function clearDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);it.date[dpopTarget.name]="";}closeAllPops();save();render();}
+function applyDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);const v=document.getElementById('dpopInput').value||"";it.date[dpopTarget.name]=v;logChange(`${dpopTarget.name}／${it.item}：日付を${v||"クリア"}に`);}closeAllPops();save();render();}
+function clearDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);it.date[dpopTarget.name]="";logChange(`${dpopTarget.name}／${it.item}：日付をクリア`);}closeAllPops();save();render();}
 let cpopTarget=null;
 function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   cpopTarget={id,name};
@@ -664,14 +767,21 @@ function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   cp.classList.add('show');
   setTimeout(()=>document.getElementById('cpopText').focus(),50);
 }
-function applyMemo(){if(cpopTarget){const it=state.items.find(x=>x.id===cpopTarget.id);it.memo[cpopTarget.name]=document.getElementById('cpopText').value.trim();}closeAllPops();save();render();}
-function clearMemo(){if(cpopTarget){const it=state.items.find(x=>x.id===cpopTarget.id);it.memo[cpopTarget.name]="";}closeAllPops();save();render();}
+function applyMemo(){if(cpopTarget){const it=state.items.find(x=>x.id===cpopTarget.id);it.memo[cpopTarget.name]=document.getElementById('cpopText').value.trim();logChange(`${cpopTarget.name}／${it.item}：コメントを更新`);}closeAllPops();save();render();}
+function clearMemo(){if(cpopTarget){const it=state.items.find(x=>x.id===cpopTarget.id);it.memo[cpopTarget.name]="";logChange(`${cpopTarget.name}／${it.item}：コメントを削除`);}closeAllPops();save();render();}
 function closeAllPops(){
   document.getElementById('pop').classList.remove('show');
   document.getElementById('dpop').classList.remove('show');
   document.getElementById('cpop').classList.remove('show');
   // 担当者の変更があれば、ポップを閉じたタイミングでまとめて保存・同期する
-  if(whoDirty){ whoDirty=false; popBtnEl=null; save(); render(); }
+  if(whoDirty){
+    whoDirty=false;
+    if(popTarget){
+      const it=state.items.find(x=>x.id===popTarget.id);
+      if(it) logChange(`${popTarget.name}／${it.item}：担当者を「${it.who[popTarget.name]||"なし"}」に`);
+    }
+    popBtnEl=null; save(); render();
+  }
 }
 function setFilter(el){document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');filter=el.dataset.f;render();}
 function matchesFilter(it){if(filter==="all")return true;const vals=state.names.map(n=>it.vals[n]||"");if(filter==="warn")return vals.includes("▲");if(filter==="empty")return vals.some(v=>v==="");return true;}
@@ -730,16 +840,17 @@ document.addEventListener('keydown',(e)=>{
 
 function render(){
   const q=(document.getElementById('search').value||"").trim().toLowerCase();
+  const names=activeNames(); // 修了者は表から除外（記録は保持）
   const tbl=document.getElementById('tbl');
   const sum=document.getElementById('summary');sum.innerHTML="";
   const cats=[...new Set(state.items.map(i=>i.cat))].length;
-  [{n:state.names.length,l:"研修生"},{n:state.items.length,l:"研修項目"},{n:cats,l:"カテゴリ"}].forEach(c=>{sum.innerHTML+=`<div class="scard"><div class="n">${c.n}</div><div class="l">${c.l}</div></div>`;});
-  const avg=state.names.length?Math.round(state.names.reduce((a,n)=>a+progressFor(n).pct,0)/state.names.length):0;
+  [{n:names.length,l:"研修生"},{n:state.items.length,l:"研修項目"},{n:cats,l:"カテゴリ"}].forEach(c=>{sum.innerHTML+=`<div class="scard"><div class="n">${c.n}</div><div class="l">${c.l}</div></div>`;});
+  const avg=names.length?Math.round(names.reduce((a,n)=>a+progressFor(n).pct,0)/names.length):0;
   sum.innerHTML+=`<div class="scard"><div class="n">${avg}%</div><div class="l">平均達成率</div></div>`;
 
   let html="<thead><tr>";
   html+=`<th class="cat-h col-cat">カテゴリ</th><th class="item-h col-item">研修項目</th>`;
-  state.names.forEach(n=>{const p=progressFor(n);html+=`<th><div class="name-th">${n}</div><div class="prog"><div class="progbar"><span style="width:${p.pct}%"></span></div><div class="progtxt">${p.pct}%</div></div></th>`;});
+  names.forEach(n=>{const p=progressFor(n);html+=`<th><div class="name-th">${n}</div><div class="prog"><div class="progbar"><span style="width:${p.pct}%"></span></div><div class="progtxt">${p.pct}%</div></div></th>`;});
   html+="</tr></thead><tbody>";
   let lastCat=null,shown=0;
   const catCounts={};state.items.forEach(x=>{catCounts[x.cat]=(catCounts[x.cat]||0)+1;});
@@ -753,16 +864,16 @@ function render(){
         lastCat=it.cat;shown++;
         html+=`<tr class="catstart collapsed-row" data-cat="${it.cat.replace(/"/g,'&quot;')}"><td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▶</span>${it.cat}</td>`;
         html+=`<td class="col-item" style="cursor:pointer" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')">${catCounts[it.cat]}項目（クリックで展開）</td>`;
-        state.names.forEach(()=>{html+=`<td class="stcell"></td>`;});
+        names.forEach(()=>{html+=`<td class="stcell"></td>`;});
         html+=`</tr>`;
       }
       return;
     }
     shown++;
-    html+=`<tr class="${isNew?'catstart':''}"${isNew?` data-cat="${it.cat.replace(/"/g,'&quot;')}"`:''}>`;
+    html+=`<tr class="${isNew?'catstart':''}" data-id="${it.id}"${isNew?` data-cat="${it.cat.replace(/"/g,'&quot;')}"`:''}>`;
     if(isNew){html+=`<td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▼</span>${it.cat}</td>`;lastCat=it.cat;}else{html+=`<td class="col-cat"></td>`;}
     html+=`<td class="col-item"><span class="itemname">${it.item}</span></td>`;
-    state.names.forEach(n=>{
+    names.forEach(n=>{
       const v=it.vals[n]||"";const who=it.who[n]||"";const dt=it.date[n]||"";const memo=it.memo[n]||"";
       const dtShort=dt?dt.replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):"";
       html+=`<td class="stcell"><div class="cellbox">
@@ -777,9 +888,10 @@ function render(){
     html+="</tr>";
   });
   html+="</tbody>";
-  if(shown===0)html+=`<tbody><tr><td colspan="${2+state.names.length}" class="empty-note">該当する項目がありません</td></tr></tbody>`;
+  if(shown===0)html+=`<tbody><tr><td colspan="${2+names.length}" class="empty-note">該当する項目がありません</td></tr></tbody>`;
   tbl.innerHTML=html;
   renderCatNav();
+  updateCmtBadge();
 }
 
 /* ---- カテゴリの一括開閉＆左のジャンプメニュー ---- */
@@ -834,22 +946,54 @@ function closeModal(id){document.getElementById(id).classList.remove('show');ren
 function openTrainees(){renderTraineeList();openModal('modalTrainees');}
 function renderTraineeList(){
   const box=document.getElementById('traineeList');box.innerHTML="";
+  const arch=state.archived||[];
   state.names.forEach((n,i)=>{
+    if(arch.includes(n)) return; // 修了者は下の別枠に表示
     box.innerHTML+=`<div class="listrow">
       <span class="name">${n}</span>
       <button class="mini up" onclick="moveTrainee(${i},-1)" ${i===0?'disabled style=opacity:.3':''}>↑</button>
       <button class="mini down" onclick="moveTrainee(${i},1)" ${i===state.names.length-1?'disabled style=opacity:.3':''}>↓</button>
-      <button class="mini" onclick="delTrainee('${n.replace(/'/g,"\\'")}')">削除</button>
+      <button class="mini" style="color:#1f7a44" onclick="archiveTrainee('${n.replace(/'/g,"\\'")}')">修了</button>
     </div>`;
   });
+  // 修了した研修生（記録は残っている。戻す／完全削除ができる）
+  const archived=state.names.filter(n=>arch.includes(n));
+  if(archived.length){
+    box.innerHTML+=`<div class="subhead" style="margin-top:16px">🎓 修了した研修生（表・Excelには出ません。記録は残っています）</div>`;
+    archived.forEach(n=>{
+      box.innerHTML+=`<div class="listrow archived">
+        <span class="name">${n}</span>
+        <button class="mini up" onclick="unarchiveTrainee('${n.replace(/'/g,"\\'")}')" style="color:#0f5e8c">表に戻す</button>
+        <button class="mini" onclick="delTrainee('${n.replace(/'/g,"\\'")}')">完全に削除</button>
+      </div>`;
+    });
+  }
+}
+function archiveTrainee(n){
+  if(!confirm(`「${n}」さんを修了にします。\n表とExcel出力から外れますが、記録はすべて残ります（いつでも戻せます）。`))return;
+  state.archived=state.archived||[];
+  if(!state.archived.includes(n)) state.archived.push(n);
+  logChange(`研修生「${n}」を修了に`);
+  save();renderTraineeList();toast(`「${n}」さんを修了にしました`);
+}
+function unarchiveTrainee(n){
+  state.archived=(state.archived||[]).filter(x=>x!==n);
+  logChange(`研修生「${n}」を表に戻した`);
+  save();renderTraineeList();toast(`「${n}」さんを表に戻しました`);
 }
 function addTrainee(){
   const inp=document.getElementById('newTrainee');const nm=(inp.value||"").trim();
-  if(!nm)return;if(state.names.includes(nm)){toast("同じ名前があります");return;}
+  if(!nm)return;
+  if(state.names.includes(nm)){
+    // 修了者と同名なら「表に戻す」扱いにする
+    if((state.archived||[]).includes(nm)){ unarchiveTrainee(nm); inp.value=""; return; }
+    toast("同じ名前があります");return;
+  }
   state.names.push(nm);state.items.forEach(it=>{it.vals[nm]="";it.who[nm]="";it.date[nm]="";it.memo[nm]="";});
+  logChange(`研修生「${nm}」を追加`);
   inp.value="";save();renderTraineeList();toast(`「${nm}」を追加しました`);
 }
-function delTrainee(n){if(!confirm(`「${n}」を削除しますか？`))return;state.names=state.names.filter(x=>x!==n);state.items.forEach(it=>{delete it.vals[n];delete it.who[n];delete it.date[n];delete it.memo[n];});save();renderTraineeList();toast(`「${n}」を削除しました`);}
+function delTrainee(n){if(!confirm(`「${n}」の記録をすべて削除しますか？\nこの操作は元に戻せません（修了にして隠すだけなら「修了」を使ってください）。`))return;state.names=state.names.filter(x=>x!==n);state.archived=(state.archived||[]).filter(x=>x!==n);state.items.forEach(it=>{delete it.vals[n];delete it.who[n];delete it.date[n];delete it.memo[n];});logChange(`研修生「${n}」を完全に削除`);save();renderTraineeList();toast(`「${n}」を削除しました`);}
 function moveTrainee(i,d){const j=i+d;if(j<0||j>=state.names.length)return;[state.names[i],state.names[j]]=[state.names[j],state.names[i]];save();renderTraineeList();}
 
 function openAdmins(){renderAdminList();openModal('modalAdmins');}
@@ -872,11 +1016,17 @@ function renderItemEditor(){
   const cats=[...new Set(state.items.map(i=>i.cat))];
   cats.forEach(cat=>{
     const rows=state.items.filter(i=>i.cat===cat);
+    const catQ=cat.replace(/'/g,"\\'").replace(/"/g,'&quot;');
     let inner=`<div class="catgroup"><div class="catgroup-h">
       <input value="${cat.replace(/"/g,'&quot;')}" onchange="renameCat('${cat.replace(/'/g,"\\'")}',this.value)">
-      <button class="mini" onclick="delCat('${cat.replace(/'/g,"\\'")}')">カテゴリ削除</button></div><div class="catgroup-b">`;
+      <button class="mini" onclick="delCat('${cat.replace(/'/g,"\\'")}')">カテゴリ削除</button></div>
+      <div class="catgroup-b" ondragover="onItemDragOver(event)" ondrop="onItemDropCat(event,'${catQ}')" ondragleave="this.classList.remove('dragover')">`;
     rows.forEach((it,ri)=>{
-      inner+=`<div class="itemrow">
+      inner+=`<div class="itemrow" draggable="true" data-itemid="${it.id}"
+        ondragstart="onItemDragStart(event,${it.id})" ondragend="onItemDragEnd(event)"
+        ondragover="onItemRowDragOver(event)" ondragleave="this.classList.remove('dragover')"
+        ondrop="onItemDrop(event,${it.id})">
+        <span class="drag-grip" title="ドラッグして移動（別のカテゴリへも動かせます）">⠿</span>
         <input value="${it.item.replace(/"/g,'&quot;')}" onchange="renameItem(${it.id},this.value)">
         <button class="mini up" onclick="moveItem(${it.id},-1)" ${ri===0?'disabled style=opacity:.3':''}>↑</button>
         <button class="mini down" onclick="moveItem(${it.id},1)" ${ri===rows.length-1?'disabled style=opacity:.3':''}>↓</button>
@@ -886,6 +1036,46 @@ function renderItemEditor(){
     inner+=`</div></div>`;
     box.innerHTML+=inner;
   });
+}
+
+/* ---- 項目のドラッグ移動（カテゴリをまたいで動かせる） ---- */
+let dragItemId=null;
+function onItemDragStart(e,id){
+  dragItemId=id;
+  e.dataTransfer.effectAllowed='move';
+  e.target.classList.add('dragging');
+}
+function onItemDragEnd(e){
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.itemrow.dragover,.catgroup-b.dragover').forEach(el=>el.classList.remove('dragover'));
+}
+function onItemDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('dragover'); }
+function onItemRowDragOver(e){ e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('dragover'); }
+// 行の上に落とす＝その行の直前に挿入（カテゴリも行に合わせて変わる）
+function onItemDrop(e,targetId){
+  e.preventDefault(); e.stopPropagation();
+  if(dragItemId==null||dragItemId===targetId){ dragItemId=null; return; }
+  const src=state.items.find(x=>x.id===dragItemId);
+  const dst=state.items.find(x=>x.id===targetId);
+  if(!src||!dst){ dragItemId=null; return; }
+  state.items=state.items.filter(x=>x.id!==dragItemId);
+  src.cat=dst.cat;
+  state.items.splice(state.items.findIndex(x=>x.id===targetId),0,src);
+  logChange(`項目「${src.item}」を「${dst.cat}」内へ移動`);
+  dragItemId=null; save(); renderItemEditor();
+}
+// カテゴリの空きスペースに落とす＝そのカテゴリの末尾に移動
+function onItemDropCat(e,cat){
+  e.preventDefault();
+  if(dragItemId==null) return;
+  const src=state.items.find(x=>x.id===dragItemId);
+  if(!src){ dragItemId=null; return; }
+  state.items=state.items.filter(x=>x.id!==dragItemId);
+  src.cat=cat;
+  let idx=-1; state.items.forEach((x,i)=>{ if(x.cat===cat) idx=i; });
+  if(idx>=0) state.items.splice(idx+1,0,src); else state.items.push(src);
+  logChange(`項目「${src.item}」を「${cat}」の末尾へ移動`);
+  dragItemId=null; save(); renderItemEditor();
 }
 function renameCat(oldC,newC){newC=(newC||"").trim();if(!newC)return;state.items.forEach(it=>{if(it.cat===oldC)it.cat=newC;});save();renderItemEditor();}
 function delCat(cat){const cnt=state.items.filter(i=>i.cat===cat).length;if(!confirm(`カテゴリ「${cat}」と、その中の${cnt}項目をすべて削除しますか？`))return;state.items=state.items.filter(i=>i.cat!==cat);save();renderItemEditor();toast(`「${cat}」を削除しました`);}
@@ -908,6 +1098,127 @@ function addItem(cat,v){v=(v||"").trim();if(!v)return;const it={id:_uid++,cat:ca
   let idx=-1;state.items.forEach((x,i)=>{if(x.cat===cat)idx=i;});
   if(idx>=0)state.items.splice(idx+1,0,it);else state.items.push(it);
   save();renderItemEditor();toast("項目を追加しました");}
+
+/* ---- コメント一覧（赤バッジ＋クリックで項目へ移動） ---- */
+function commentEntries(){
+  const out=[]; const names=activeNames();
+  state.items.forEach(it=>names.forEach(n=>{
+    if(it.memo && it.memo[n]) out.push({id:it.id,item:it.item,cat:it.cat,name:n,memo:it.memo[n]});
+  }));
+  return out;
+}
+function updateCmtBadge(){
+  const b=document.getElementById('cmtBadge');
+  if(!b) return;
+  const n=commentEntries().length;
+  b.style.display=n?"flex":"none";
+  b.textContent=n>99?"99+":n;
+}
+function openComments(){
+  const list=commentEntries();
+  document.getElementById('commentList').innerHTML=list.length?list.map(e=>`
+    <div class="cmtrow" onclick="closeModal('modalComments');jumpToItem(${e.id})">
+      <span class="cw">${escI(e.name)}さん</span>
+      <span class="ci">${escI(e.item)}</span>
+      <span class="cm">${escI(e.memo)}</span>
+    </div>`).join(''):'<div class="empty-note">コメントはまだありません</div>';
+  openModal('modalComments');
+}
+
+// 指定の研修項目の行へ移動（折りたたみ・検索・フィルターは自動で解除）
+function jumpToItem(id){
+  const it=state.items.find(x=>x.id===id);
+  if(!it) return;
+  let needRender=false;
+  if(collapsedCats.has(it.cat)){ collapsedCats.delete(it.cat); saveCollapsed(); needRender=true; }
+  const searchEl=document.getElementById('search');
+  if(searchEl.value){ searchEl.value=""; needRender=true; }
+  if(filter!=="all"){
+    filter="all";
+    document.querySelectorAll('.pill[data-f]').forEach(p=>p.classList.toggle('active',p.dataset.f==="all"));
+    needRender=true;
+  }
+  if(needRender) render();
+  requestAnimationFrame(()=>{
+    const row=document.querySelector(`tr[data-id="${id}"]`);
+    const scroller=document.querySelector('.scroll');
+    if(!row||!scroller) return;
+    const thead=scroller.querySelector('thead');
+    const top=row.getBoundingClientRect().top
+      -scroller.getBoundingClientRect().top
+      +scroller.scrollTop
+      -(thead?thead.offsetHeight:0);
+    scroller.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+    row.classList.add('jumpflash');
+    setTimeout(()=>row.classList.remove('jumpflash'),1500);
+  });
+}
+
+/* ---- 変更履歴 ---- */
+function openHistory(){
+  const list=(state.log||[]).slice(-150).reverse();
+  document.getElementById('historyList').innerHTML=list.length?list.map(e=>{
+    const d=new Date(e.t||0);
+    const ts=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `<div class="histrow"><span class="ht">${ts}</span><span class="ho">${escI(e.op)}</span><span class="hx">${escI(e.txt)}</span></div>`;
+  }).join(''):'<div class="empty-note">まだ履歴はありません</div>';
+  openModal('modalHistory');
+}
+
+/* ---- 操作者（誰が使っているか） ---- */
+function updateOpBtn(){
+  const b=document.getElementById('opBtn');
+  if(b) b.textContent="👤 "+(getOperator()||"名前を選ぶ");
+}
+function openOperator(){
+  document.getElementById('operatorChoices').innerHTML=state.admins.map(a=>
+    `<button class="op-choice" onclick="pickOperator('${a.replace(/'/g,"\\'")}')">${a}</button>`).join('');
+  document.getElementById('operatorInput').value=getOperator();
+  openModal('modalOperator');
+}
+function pickOperator(name){
+  name=(name||"").trim();
+  if(!name){ toast("名前を選ぶか入力してください"); return; }
+  localStorage.setItem('operatorName',name);
+  updateOpBtn();
+  closeModal('modalOperator');
+  toast(`操作者：${name} さんとして記録します`);
+}
+
+/* ---- バックアップからの復元 ---- */
+function importBackup(){
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='.json,application/json';
+  inp.onchange=()=>{
+    const f=inp.files[0];
+    if(!f) return;
+    const fr=new FileReader();
+    fr.onload=()=>{
+      try{
+        const data=JSON.parse(fr.result);
+        if(!data || !Array.isArray(data.items) || !Array.isArray(data.names)) throw new Error("バックアップファイルの形式が違います");
+        if(!confirm(`バックアップの内容：研修生${data.names.length}名・研修項目${data.items.length}件\n\n現在のネット上のデータを、この内容で置き換えます。よろしいですか？`)) return;
+        if(!confirm("本当に置き換えますか？（現在のデータは上書きされ、全員の画面に反映されます）")) return;
+        state.names=data.names;
+        state.admins=data.admins||state.admins;
+        state.items=data.items;
+        state.archived=data.archived||[];
+        state.log=data.log||state.log||[];
+        _uid=state.items.reduce((m,it)=>Math.max(m,it.id||0),0)+1;
+        state.items.forEach(it=>{
+          if(!it.vals)it.vals={}; if(!it.who)it.who={}; if(!it.date)it.date={}; if(!it.memo)it.memo={};
+          state.names.forEach(nm=>{ if(!(nm in it.vals))it.vals[nm]=""; if(!(nm in it.who))it.who[nm]=""; if(!(nm in it.date))it.date[nm]=""; if(!(nm in it.memo))it.memo[nm]=""; });
+        });
+        logChange(`バックアップ「${f.name}」から復元`);
+        save(); render();
+        toast("バックアップから復元しました");
+      }catch(e){ alert("復元できませんでした: "+e.message); }
+    };
+    fr.readAsText(f);
+  };
+  inp.click();
+}
 
 function toggleCat(cat){if(collapsedCats.has(cat))collapsedCats.delete(cat);else collapsedCats.add(cat);saveCollapsed();render();}
 function printAll(){collapsedCats.clear();render();setTimeout(()=>window.print(),100);}
@@ -942,7 +1253,7 @@ async function buildExcelWorkbook(){
     views:[{state:"frozen",ySplit:4}],
   });
 
-  const names=state.names;
+  const names=activeNames(); // 修了者はExcelにも出さない
   const lastCol=2+names.length+1; // カテゴリ+項目+研修生...+担当者
   const thin={style:"thin",color:{argb:"FFB8C4CE"}};
   const border={top:thin,left:thin,bottom:thin,right:thin};
@@ -1051,8 +1362,12 @@ async function buildExcelWorkbook(){
       if(noteParts.length) c.note=noteParts.join("\n");
     });
 
+    // 管理者確認欄：セルに付けた担当者（複数可）を全員分まとめて表示。
+    // 誰も付いていない項目は、従来の項目ごとの担当（it.admin）を表示する
+    const whoSet=new Set();
+    names.forEach(n=>String((it.who&&it.who[n])||"").split("・").filter(Boolean).forEach(w=>whoSet.add(w)));
     const adminCell=ws.getCell(r,lastCol);
-    adminCell.value=it.admin||"";
+    adminCell.value=whoSet.size?[...whoSet].join("・"):(it.admin||"");
     adminCell.font={name:FONT,size:9.5,color:{argb:"FF5B6B7A"}};
     adminCell.alignment={horizontal:"center",vertical:"middle"};
     adminCell.border=(r===catStart)?{...border,top:catTop}:border;
@@ -1077,7 +1392,7 @@ function normSym(s){
   if(!s) return "";
   if(["○","〇","◯","Ｏ","O","o","0"].includes(s)) return "○";
   if(["▲","△","▴","▵"].includes(s)) return "▲";
-  if(["―","ー","−","-","－","ｰ","–","—","‐"].includes(s)) return "―";
+  if(["―","ー","−","-","－","ｰ","–","—","‐","／","/","＼","\\"].includes(s)) return "―";
   if(s==="書") return "書";
   if(["・","･",".","·","…"].includes(s)) return "";
   return null;
@@ -1297,6 +1612,7 @@ function applyImport(){
   pendingImportNew=null;
   closeModal('modalImport');
   if(n||added.length){
+    logChange(`Excel取込：${n}件を反映${added.length?`・研修生追加(${added.join('・')})`:""}`);
     save(); render();
     const msg=[added.length?`研修生「${added.join('・')}」を追加`:"",n?`${n}件を反映`:""].filter(Boolean).join('し、');
     toast(msg+'しました');
