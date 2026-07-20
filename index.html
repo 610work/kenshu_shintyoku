@@ -402,6 +402,7 @@
   #cpopOthers{max-width:280px;max-height:150px;overflow-y:auto;margin-bottom:10px}
   .cmt-other{background:var(--bg);border-radius:8px;padding:7px 10px;margin-bottom:6px;font-size:13px;line-height:1.5;word-break:break-all}
   .cmt-other-au{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--doc);margin-bottom:2px}
+  .cmt-date{font-weight:600;color:#9aa7b3;font-size:10.5px}
   .cmt-del{border:1px solid var(--line);background:#fff;color:#b23b3b;font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;cursor:pointer}
   .cmt-del:hover{background:#fdeaea;border-color:#b23b3b}
   .cpop-mine-label{font-size:12px;font-weight:700;color:var(--brand-d);margin-bottom:5px}
@@ -704,9 +705,17 @@ function memoMap(it,name){
   if(typeof m==="string") return m.trim()?{"（以前の記録）":m}:{};
   return m;
 }
-function memoAuthors(it,name){ return Object.entries(memoMap(it,name)).filter(([a,t])=>t&&String(t).trim()); }
+// 1件のコメント値は「文字列」（旧）または {text,date}（新）。両対応で取り出す
+function memoText(v){ return (v&&typeof v==="object")?(v.text||""):(v||""); }
+function memoDate(v){ return (v&&typeof v==="object")?(v.date||""):""; }
+function fmtMemoDate(d){ return d?String(d).replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):""; }
+function memoAuthors(it,name){
+  return Object.entries(memoMap(it,name))
+    .map(([author,v])=>({author, text:memoText(v), date:memoDate(v)}))
+    .filter(o=>o.text&&o.text.trim());
+}
 function hasMemo(it,name){ return memoAuthors(it,name).length>0; }
-function memoTooltip(it,name){ return memoAuthors(it,name).map(([a,t])=>`${a}：${t}`).join("\n"); }
+function memoTooltip(it,name){ return memoAuthors(it,name).map(o=>`${o.author}${o.date?`（${fmtMemoDate(o.date)}）`:""}：${o.text}`).join("\n"); }
 // 他人のコメントも削除できる管理担当者（ここに名前を足せば権限を増やせます）
 const COMMENT_MANAGERS=["武藤","中嶋"];
 function canManageComments(){ return COMMENT_MANAGERS.includes(getOperator()); }
@@ -884,7 +893,7 @@ function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   document.getElementById('cpopHead').textContent=name+"／"+it.item;
   refreshCpopOthers();
   document.getElementById('cpopMineLabel').textContent=`あなた（${author}）のコメント`;
-  document.getElementById('cpopText').value=memoMap(it,name)[author]||"";
+  document.getElementById('cpopText').value=memoText(memoMap(it,name)[author]);
   const cp=document.getElementById('cpop');
   const r=ev.target.getBoundingClientRect();
   cp.style.left=Math.min(r.left,window.innerWidth-300)+"px";
@@ -898,11 +907,11 @@ function refreshCpopOthers(){
   const it=state.items.find(x=>x.id===cpopTarget.id);
   if(!it) return;
   const author=getOperator();
-  const others=memoAuthors(it,cpopTarget.name).filter(([a])=>a!==author);
+  const others=memoAuthors(it,cpopTarget.name).filter(o=>o.author!==author);
   const canDel=canManageComments();
   const box=document.getElementById('cpopOthers');
   box.innerHTML=others.length
-    ? others.map(([a,t])=>`<div class="cmt-other"><span class="cmt-other-au">${escI(a)}${canDel?` <button class="cmt-del" onclick="deleteOthersMemo('${a.replace(/'/g,"\\'")}')">✕削除</button>`:""}</span>${escI(t)}</div>`).join("")
+    ? others.map(o=>`<div class="cmt-other"><span class="cmt-other-au">${escI(o.author)}${o.date?`<span class="cmt-date">${fmtMemoDate(o.date)}</span>`:""}${canDel?` <button class="cmt-del" onclick="deleteOthersMemo('${o.author.replace(/'/g,"\\'")}')">✕削除</button>`:""}</span>${escI(o.text)}</div>`).join("")
     : "";
   box.style.display=others.length?"block":"none";
 }
@@ -925,7 +934,7 @@ function applyMemo(){
       it.memo[cpopTarget.name]=memoMap(it,cpopTarget.name); // 旧文字列を担当者別に変換
     }
     const txt=document.getElementById('cpopText').value.trim();
-    if(txt) it.memo[cpopTarget.name][author]=txt;
+    if(txt) it.memo[cpopTarget.name][author]={text:txt, date:todayStr()};
     else delete it.memo[cpopTarget.name][author];
     logChange(`${cpopTarget.name}／${it.item}：${author}のコメントを${txt?"更新":"削除"}`);
   }
@@ -1371,8 +1380,8 @@ function addItem(cat,v){v=(v||"").trim();if(!v)return;const it={id:_uid++,cat:ca
 function commentEntries(){
   const out=[]; const names=activeNames();
   state.items.forEach(it=>names.forEach(n=>{
-    memoAuthors(it,n).forEach(([author,memo])=>{
-      out.push({id:it.id,item:it.item,cat:it.cat,name:n,author,memo});
+    memoAuthors(it,n).forEach(o=>{
+      out.push({id:it.id,item:it.item,cat:it.cat,name:n,author:o.author,memo:o.text,date:o.date});
     });
   }));
   return out;
@@ -1410,7 +1419,7 @@ function openComments(){
       ${isNew?'<span class="cmt-new">NEW</span>':''}
       <span class="cw">${escI(e.name)}さん</span>
       <span class="ci">${escI(e.item)}</span>
-      <span class="cm"><span class="cm-au">✍${escI(e.author)}</span>${escI(e.memo)}</span>
+      <span class="cm"><span class="cm-au">✍${escI(e.author)}${e.date?` ${fmtMemoDate(e.date)}`:""}</span>${escI(e.memo)}</span>
     </div>`;
   }).join(''):'<div class="empty-note">コメントはまだありません</div>';
   // フッターの「確認」ボタンの出し分け（未確認あり かつ 武藤・中嶋のときだけ）
@@ -1652,7 +1661,7 @@ async function buildExcelWorkbook(){
       const noteParts=[];
       if(it.date[n]) noteParts.push("研修日: "+it.date[n]);
       if(it.who[n])  noteParts.push("担当: "+it.who[n]);
-      memoAuthors(it,n).forEach(([a,t])=>noteParts.push("メモ("+a+"): "+t));
+      memoAuthors(it,n).forEach(o=>noteParts.push("メモ("+o.author+(o.date?" "+fmtMemoDate(o.date):"")+"): "+o.text));
       if(noteParts.length) c.note=noteParts.join("\n");
     });
 
