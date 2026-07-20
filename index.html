@@ -854,8 +854,10 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 
 function stClass(v){return v==="○"?"st-ok":v==="▲"?"st-warn":v==="―"?"st-skip":v==="書"?"st-doc":"st-empty";}
 function cycle(id,name){const it=state.items.find(x=>x.id===id);const cur=it.vals[name]||"";const next=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];it.vals[name]=next;
-  // 初めて○か▲が入った時、日付が未設定なら今日を記録
-  if((next==="○"||next==="▲") && !it.date[name]) it.date[name]=todayStr();
+  // 日付は「○か▲を付けた日」。初めて○/▲になったら今日を記録し、
+  // ○/▲以外（未実施・対象外・書類）に変わったら日付は不要なのでクリアする
+  if(next==="○"||next==="▲"){ if(!it.date[name]) it.date[name]=todayStr(); }
+  else if(it.date[name]) it.date[name]="";
   // 同じマスを続けて切り替えている間は履歴を1件にまとめる。
   // 連続操作の「最初の値」を起点に、最終的な値だけを残す。
   const key="cell:"+id+":"+name;
