@@ -297,11 +297,17 @@
     border-radius:9px;padding:10px 12px}
 
   /* who picker popover */
-  .pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 12px 32px rgba(0,0,0,.2);padding:6px;min-width:130px;display:none}
+  .pop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 12px 32px rgba(0,0,0,.2);padding:6px;min-width:150px;display:none}
   .pop.show{display:block}
   .pop button{display:block;width:100%;text-align:left;border:none;background:none;padding:9px 13px;border-radius:8px;font-size:14.5px;cursor:pointer;color:var(--ink)}
   .pop button:hover{background:var(--bg)}
   .pop button.clear{color:var(--sub);border-top:1px solid var(--line2);margin-top:4px}
+  .pop .pop-check{
+    display:flex;align-items:center;gap:9px;padding:8px 13px;border-radius:8px;
+    font-size:14.5px;cursor:pointer;color:var(--ink);user-select:none;
+  }
+  .pop .pop-check:hover{background:var(--bg)}
+  .pop .pop-check input{width:auto;margin:0;cursor:pointer}
   .dpop,.cpop{position:fixed;z-index:95;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.2);padding:12px;display:none}
   .dpop.show,.cpop.show{display:block}
   .dpop input[type=date]{font-size:15px;padding:8px 10px;border:1.5px solid var(--line);border-radius:9px;outline:none;font-family:inherit}
@@ -434,7 +440,7 @@
       <b>記号</b>：セル上部をクリックで 空欄→○→▲→―→書→空欄 と切替。／
       <b>日付</b>：初めて○か▲を付けた日が自動で入ります。日付をクリックするとカレンダーで変更できます。／
       <b>コメント</b>：🗨をクリックでメモを書けます（記入済みは色付きの💬）。／
-      <b>担当者</b>：セル下部の四角をクリックで、研修をやった人を選択。／
+      <b>担当者</b>：セル下部の四角をクリックで、研修をやった人を選択（<b>複数人選べます</b>）。／
       <b>カテゴリ名をクリック</b>すると折りたたみできます。／
       研修生・担当者・研修項目は右上のボタンからいつでも増減できます。／
       <b>変更は自動で保存され、他の研修担当者の画面にもすぐ反映されます</b>（Excelをメールで送る必要はありません）。画面右上の表示が「🟢 接続中」なら正常です。
@@ -523,7 +529,10 @@ if(!state.admins) state.admins = ['中嶋','社長','武藤','岡崎'];
 // ensure who map exists
 let _uid = state.items.reduce((m,it)=>Math.max(m,it.id),0)+1;
 state.items.forEach(it=>{ if(!it.who) it.who={}; if(!it.date) it.date={}; if(!it.memo) it.memo={}; state.names.forEach(n=>{ if(!(n in it.who)) it.who[n]=''; if(!(n in it.date)) it.date[n]=''; if(!(n in it.memo)) it.memo[n]=''; }); });
+// カテゴリの開閉状態は端末ごとに記憶する（次に開いた時も同じ状態で始まる）
 let collapsedCats=new Set();
+try{ collapsedCats=new Set(JSON.parse(localStorage.getItem('collapsedCats')||"[]")); }catch(e){}
+function saveCollapsed(){ try{ localStorage.setItem('collapsedCats',JSON.stringify([...collapsedCats])); }catch(e){} }
 const initialSnapshot=JSON.stringify(state);
 let savedSnapshot=initialSnapshot;
 function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -657,28 +666,67 @@ function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
 }
 function applyMemo(){if(cpopTarget){const it=state.items.find(x=>x.id===cpopTarget.id);it.memo[cpopTarget.name]=document.getElementById('cpopText').value.trim();}closeAllPops();save();render();}
 function clearMemo(){if(cpopTarget){const it=state.items.find(x=>x.id===cpopTarget.id);it.memo[cpopTarget.name]="";}closeAllPops();save();render();}
-function closeAllPops(){document.getElementById('pop').classList.remove('show');document.getElementById('dpop').classList.remove('show');document.getElementById('cpop').classList.remove('show');}
+function closeAllPops(){
+  document.getElementById('pop').classList.remove('show');
+  document.getElementById('dpop').classList.remove('show');
+  document.getElementById('cpop').classList.remove('show');
+  // 担当者の変更があれば、ポップを閉じたタイミングでまとめて保存・同期する
+  if(whoDirty){ whoDirty=false; popBtnEl=null; save(); render(); }
+}
 function setFilter(el){document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');filter=el.dataset.f;render();}
 function matchesFilter(it){if(filter==="all")return true;const vals=state.names.map(n=>it.vals[n]||"");if(filter==="warn")return vals.includes("▲");if(filter==="empty")return vals.some(v=>v==="");return true;}
 function progressFor(name){let done=0,total=0;state.items.forEach(it=>{const v=it.vals[name]||"";if(v==="―")return;total++;if(v==="○")done++;});return{done,total,pct:total?Math.round(done/total*100):0};}
 
-/* ---- who popover ---- */
+/* ---- who popover（複数選択可） ---- */
 let popTarget=null;
+let popBtnEl=null;   // 開いた元のボタン（開いたまま表示を更新するため）
+let whoDirty=false;  // チェックを触ったらポップを閉じた時にまとめて保存する
 function openWho(ev,id,name){
   ev.stopPropagation();closeAllPops();
   const pop=document.getElementById('pop');
   popTarget={id,name};
-  let h="";
-  state.admins.forEach(a=>{h+=`<button onclick="pickWho('${a.replace(/'/g,"\\'")}')">${a}</button>`;});
-  h+=`<button class="clear" onclick="pickWho('')">（クリア）</button>`;
+  popBtnEl=ev.target;
+  const it=state.items.find(x=>x.id===id);
+  const cur=(it.who[name]||"").split("・").filter(Boolean);
+  let h=`<div class="pophead" style="padding:6px 13px 2px">研修をやった人（複数選べます）</div>`;
+  state.admins.forEach(a=>{
+    h+=`<label class="pop-check"><input type="checkbox" value="${a.replace(/"/g,'&quot;')}" ${cur.includes(a)?"checked":""} onchange="whoChanged()"> ${a}</label>`;
+  });
+  h+=`<button class="clear" onclick="clearWho()">（クリア）</button>`;
   pop.innerHTML=h;
   const r=ev.target.getBoundingClientRect();
-  pop.style.left=Math.min(r.left,window.innerWidth-150)+"px";
-  pop.style.top=(r.bottom+4)+"px";
+  pop.style.left=Math.min(r.left,window.innerWidth-170)+"px";
+  pop.style.top=Math.min(r.bottom+4,window.innerHeight-60-state.admins.length*38)+"px";
   pop.classList.add('show');
 }
-function pickWho(a){if(popTarget){const it=state.items.find(x=>x.id===popTarget.id);it.who[popTarget.name]=a;}document.getElementById('pop').classList.remove('show');save();render();}
+function whoChanged(){
+  if(!popTarget)return;
+  const checked=[...document.querySelectorAll('#pop input:checked')].map(i=>i.value);
+  const it=state.items.find(x=>x.id===popTarget.id);
+  if(!it)return;
+  it.who[popTarget.name]=checked.join("・");
+  whoDirty=true;
+  // ポップは開いたまま、元のボタンの表示だけ更新する
+  if(popBtnEl){
+    const v=it.who[popTarget.name];
+    popBtnEl.textContent=v||"";
+    popBtnEl.title=v||"";
+    popBtnEl.classList.toggle('set',!!v);
+  }
+}
+function clearWho(){
+  document.querySelectorAll('#pop input[type=checkbox]').forEach(i=>{i.checked=false;});
+  whoChanged();
+}
 document.addEventListener('click',closeAllPops);
+// Escapeキーでポップやモーダルを閉じられるように
+document.addEventListener('keydown',(e)=>{
+  if(e.key!=='Escape')return;
+  closeAllPops();
+  document.querySelectorAll('.modal-bg.show').forEach(m=>{
+    if(m.id==='modalImport') cancelImport(); else closeModal(m.id);
+  });
+});
 
 function render(){
   const q=(document.getElementById('search').value||"").trim().toLowerCase();
@@ -723,7 +771,7 @@ function render(){
           <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},'${n}')">${dtShort||"日付"}</button>
           <button class="cmtbtn ${memo?'set':''}" onclick="editMemo(event,${it.id},'${n}')" title="${memo.replace(/"/g,'&quot;')}">${memo?"💬":"🗨"}</button>
         </div>
-        <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},'${n}')">${who?who:""}</button>
+        <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},'${n}')" title="${who.replace(/"/g,'&quot;')}">${who?who:""}</button>
       </div></td>`;
     });
     html+="</tr>";
@@ -746,17 +794,19 @@ function renderCatNav(){
 
 function collapseAll(){
   [...new Set(state.items.map(i=>i.cat))].forEach(c=>collapsedCats.add(c));
+  saveCollapsed();
   render();
 }
 function expandAll(){
   collapsedCats.clear();
+  saveCollapsed();
   render();
 }
 
 function jumpToCat(cat){
   // 折りたたまれていたら開いてから移動する
   const wasCollapsed=collapsedCats.has(cat);
-  if(wasCollapsed){ collapsedCats.delete(cat); render(); }
+  if(wasCollapsed){ collapsedCats.delete(cat); saveCollapsed(); render(); }
   const go=()=>{
     const row=document.querySelector(`tr[data-cat="${CSS.escape(cat)}"]`);
     const scroller=document.querySelector('.scroll');
@@ -859,7 +909,7 @@ function addItem(cat,v){v=(v||"").trim();if(!v)return;const it={id:_uid++,cat:ca
   if(idx>=0)state.items.splice(idx+1,0,it);else state.items.push(it);
   save();renderItemEditor();toast("項目を追加しました");}
 
-function toggleCat(cat){if(collapsedCats.has(cat))collapsedCats.delete(cat);else collapsedCats.add(cat);render();}
+function toggleCat(cat){if(collapsedCats.has(cat))collapsedCats.delete(cat);else collapsedCats.add(cat);saveCollapsed();render();}
 function printAll(){collapsedCats.clear();render();setTimeout(()=>window.print(),100);}
 function exportData(){const blob=new Blob([JSON.stringify(state,null,1)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="研修進捗_"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(url);savedSnapshot=JSON.stringify(state);toast("バックアップを書き出しました");}
 
