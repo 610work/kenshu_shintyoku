@@ -1292,11 +1292,14 @@ function openItems(){renderItemEditor();openModal('modalItems');}
 function renderItemEditor(){
   const box=document.getElementById('itemEditor');box.innerHTML="";
   const cats=[...new Set(state.items.map(i=>i.cat))];
-  cats.forEach(cat=>{
+  cats.forEach((cat,ci)=>{
     const rows=state.items.filter(i=>i.cat===cat);
     const catQ=cat.replace(/'/g,"\\'").replace(/"/g,'&quot;');
     let inner=`<div class="catgroup"><div class="catgroup-h">
+      <span class="drag-grip" style="cursor:default">🗂</span>
       <input value="${cat.replace(/"/g,'&quot;')}" onchange="renameCat('${cat.replace(/'/g,"\\'")}',this.value)">
+      <button class="mini up" onclick="moveCat('${cat.replace(/'/g,"\\'")}',-1)" ${ci===0?'disabled style=opacity:.3':''} title="カテゴリを上へ">↑</button>
+      <button class="mini down" onclick="moveCat('${cat.replace(/'/g,"\\'")}',1)" ${ci===cats.length-1?'disabled style=opacity:.3':''} title="カテゴリを下へ">↓</button>
       <button class="mini" onclick="delCat('${cat.replace(/'/g,"\\'")}')">カテゴリ削除</button></div>
       <div class="catgroup-b" ondragover="onItemDragOver(event)" ondrop="onItemDropCat(event,'${catQ}')" ondragleave="this.classList.remove('dragover')">`;
     rows.forEach((it,ri)=>{
@@ -1356,6 +1359,18 @@ function onItemDropCat(e,cat){
   dragItemId=null; save(); renderItemEditor();
 }
 function renameCat(oldC,newC){newC=(newC||"").trim();if(!newC)return;state.items.forEach(it=>{if(it.cat===oldC)it.cat=newC;});save();renderItemEditor();}
+// カテゴリごと（中の項目もまとめて）上下に移動する
+function moveCat(cat,dir){
+  const cats=[...new Set(state.items.map(i=>i.cat))];
+  const idx=cats.indexOf(cat), t=idx+dir;
+  if(idx<0||t<0||t>=cats.length) return;
+  [cats[idx],cats[t]]=[cats[t],cats[idx]];
+  // 新しいカテゴリ順で並べ直す（各カテゴリ内の項目順はそのまま維持）
+  const byCat={}; state.items.forEach(it=>{ (byCat[it.cat]=byCat[it.cat]||[]).push(it); });
+  state.items=cats.flatMap(c=>byCat[c]||[]);
+  logChange(`カテゴリ「${cat}」を${dir<0?"上":"下"}へ移動`);
+  save(); renderItemEditor();
+}
 function delCat(cat){const cnt=state.items.filter(i=>i.cat===cat).length;if(!confirm(`カテゴリ「${cat}」と、その中の${cnt}項目をすべて削除しますか？`))return;state.items=state.items.filter(i=>i.cat!==cat);save();renderItemEditor();toast(`「${cat}」を削除しました`);}
 function addCat(){const inp=document.getElementById('newCat');const nm=(inp.value||"").trim();if(!nm)return;const it={id:_uid++,cat:nm,item:"新しい項目",vals:{},who:{},date:{},memo:{}};state.names.forEach(n=>{it.vals[n]="";it.who[n]="";it.date[n]="";it.memo[n]="";});state.items.push(it);inp.value="";save();renderItemEditor();toast(`カテゴリ「${nm}」を追加`);}
 function renameItem(id,v){v=(v||"").trim();if(!v)return;const it=state.items.find(x=>x.id===id);it.item=v;save();}
