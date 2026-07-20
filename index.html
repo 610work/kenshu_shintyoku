@@ -387,7 +387,9 @@
   /* 他の担当者のコメント（読み取り専用） */
   #cpopOthers{max-width:280px;max-height:150px;overflow-y:auto;margin-bottom:10px}
   .cmt-other{background:var(--bg);border-radius:8px;padding:7px 10px;margin-bottom:6px;font-size:13px;line-height:1.5;word-break:break-all}
-  .cmt-other-au{display:block;font-size:11px;font-weight:700;color:var(--doc);margin-bottom:2px}
+  .cmt-other-au{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--doc);margin-bottom:2px}
+  .cmt-del{border:1px solid var(--line);background:#fff;color:#b23b3b;font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;cursor:pointer}
+  .cmt-del:hover{background:#fdeaea;border-color:#b23b3b}
   .cpop-mine-label{font-size:12px;font-weight:700;color:var(--brand-d);margin-bottom:5px}
   /* コメント一覧の記入者ラベル */
   .cmtrow .cm-au{display:inline-block;font-size:11px;font-weight:700;color:var(--doc);margin-right:6px}
@@ -691,6 +693,9 @@ function memoMap(it,name){
 function memoAuthors(it,name){ return Object.entries(memoMap(it,name)).filter(([a,t])=>t&&String(t).trim()); }
 function hasMemo(it,name){ return memoAuthors(it,name).length>0; }
 function memoTooltip(it,name){ return memoAuthors(it,name).map(([a,t])=>`${a}：${t}`).join("\n"); }
+// 他人のコメントも削除できる管理担当者（ここに名前を足せば権限を増やせます）
+const COMMENT_MANAGERS=["武藤","中嶋"];
+function canManageComments(){ return COMMENT_MANAGERS.includes(getOperator()); }
 
 // ensure who map exists
 let _uid = state.items.reduce((m,it)=>Math.max(m,it.id),0)+1;
@@ -863,13 +868,7 @@ function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   cpopTarget={id,name};
   const it=state.items.find(x=>x.id===id);
   document.getElementById('cpopHead').textContent=name+"／"+it.item;
-  // 他の担当者のコメントを読み取り専用で一覧表示（自分の分は下の入力欄に出す）
-  const others=memoAuthors(it,name).filter(([a])=>a!==author);
-  const box=document.getElementById('cpopOthers');
-  box.innerHTML=others.length
-    ? others.map(([a,t])=>`<div class="cmt-other"><span class="cmt-other-au">${escI(a)}</span>${escI(t)}</div>`).join("")
-    : "";
-  box.style.display=others.length?"block":"none";
+  refreshCpopOthers();
   document.getElementById('cpopMineLabel').textContent=`あなた（${author}）のコメント`;
   document.getElementById('cpopText').value=memoMap(it,name)[author]||"";
   const cp=document.getElementById('cpop');
@@ -878,6 +877,31 @@ function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   cp.style.top=Math.min(r.bottom+4,window.innerHeight-260)+"px";
   cp.classList.add('show');
   setTimeout(()=>document.getElementById('cpopText').focus(),50);
+}
+// 他の担当者のコメントを一覧表示（管理担当者には削除ボタンつき）
+function refreshCpopOthers(){
+  if(!cpopTarget) return;
+  const it=state.items.find(x=>x.id===cpopTarget.id);
+  if(!it) return;
+  const author=getOperator();
+  const others=memoAuthors(it,cpopTarget.name).filter(([a])=>a!==author);
+  const canDel=canManageComments();
+  const box=document.getElementById('cpopOthers');
+  box.innerHTML=others.length
+    ? others.map(([a,t])=>`<div class="cmt-other"><span class="cmt-other-au">${escI(a)}${canDel?` <button class="cmt-del" onclick="deleteOthersMemo('${a.replace(/'/g,"\\'")}')">✕削除</button>`:""}</span>${escI(t)}</div>`).join("")
+    : "";
+  box.style.display=others.length?"block":"none";
+}
+// 管理担当者が他人のコメントを削除する
+function deleteOthersMemo(author){
+  if(!cpopTarget || !canManageComments()) return;
+  const it=state.items.find(x=>x.id===cpopTarget.id);
+  if(!it) return;
+  if(!confirm(`${author} さんが書いたコメントを削除しますか？`)) return;
+  if(typeof it.memo[cpopTarget.name]==="object" && it.memo[cpopTarget.name]) delete it.memo[cpopTarget.name][author];
+  logChange(`${cpopTarget.name}／${it.item}：${author}のコメントを${getOperator()}が削除`);
+  save(); render();
+  refreshCpopOthers(); // ポップは開いたまま一覧だけ更新
 }
 function applyMemo(){
   if(cpopTarget){
