@@ -319,6 +319,7 @@
     border-radius:9px;margin-bottom:7px;background:#fff;cursor:pointer;font-size:13.5px;
   }
   .cmtrow:hover{border-color:var(--brand);background:#f8fbfd}
+  .cmtrow .cmt-new{background:#e0342f;color:#fff;font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;flex-shrink:0;align-self:center}
   .cmtrow .cw{font-weight:700;flex-shrink:0;min-width:64px}
   .cmtrow .ci{color:var(--sub);font-size:12px;flex-shrink:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cmtrow .cm{flex:1;color:var(--ink);line-height:1.5;word-break:break-all}
@@ -556,10 +557,13 @@
   <div class="modal">
     <div class="modal-h"><h2>🗨 コメント一覧</h2><button class="modal-x" onclick="closeModal('modalComments')">×</button></div>
     <div class="modal-b">
-      <div class="subhead">クリックすると、その研修項目に移動します</div>
+      <div class="subhead">クリックすると、その研修項目に移動します。「確認」を押すと通知の赤バッジだけ消えます（コメント自体は表で消すまで残ります）。</div>
       <div id="commentList"></div>
     </div>
-    <div class="modal-f"><button class="btn primary" onclick="closeModal('modalComments')">閉じる</button></div>
+    <div class="modal-f">
+      <button class="btn" id="ackCommentsBtn" onclick="ackComments()">確認（バッジを消す）</button>
+      <button class="btn primary" onclick="closeModal('modalComments')">閉じる</button>
+    </div>
   </div>
 </div>
 
@@ -616,10 +620,18 @@ function activeNames(){ return state.names.filter(n=>!(state.archived||[]).inclu
 // 操作している人の名前（端末ごとに記憶）
 function getOperator(){ return localStorage.getItem('operatorName')||""; }
 
-// 変更履歴に1件追加（誰が・いつ・何をしたか）
-function logChange(txt){
+// 変更履歴に1件追加（誰が・いつ・何をしたか）。
+// key を渡すと、直前の履歴が同じ key のときは新規追加せず「上書き」する。
+// これで同じマスをカチカチ切り替えても、次に別の操作をするまでは1件にまとまる。
+function logChange(txt,key){
   if(!state.log) state.log=[];
-  state.log.push({ t: Date.now(), op: getOperator()||"名前未設定", txt: String(txt).slice(0,120) });
+  const now=Date.now(), op=getOperator()||"名前未設定";
+  const last=state.log[state.log.length-1];
+  if(key && last && last.key===key){
+    last.txt=String(txt).slice(0,120); last.t=now; last.op=op;
+  }else{
+    state.log.push({ t: now, op, txt: String(txt).slice(0,120), key: key||null });
+  }
   if(state.log.length>300) state.log=state.log.slice(-300);
 }
 // ensure who map exists
@@ -737,7 +749,18 @@ function stClass(v){return v==="○"?"st-ok":v==="▲"?"st-warn":v==="―"?"st-s
 function cycle(id,name){const it=state.items.find(x=>x.id===id);const cur=it.vals[name]||"";const next=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];it.vals[name]=next;
   // 初めて○か▲が入った時、日付が未設定なら今日を記録
   if((next==="○"||next==="▲") && !it.date[name]) it.date[name]=todayStr();
-  logChange(`${name}／${it.item}：「${cur||"空欄"}」→「${next||"空欄"}」`);
+  // 同じマスを続けて切り替えている間は履歴を1件にまとめる。
+  // 連続操作の「最初の値」を起点に、最終的な値だけを残す。
+  const key="cell:"+id+":"+name;
+  const last=state.log&&state.log[state.log.length-1];
+  const from=(last&&last.key===key&&last._from!==undefined)?last._from:cur;
+  if(from===next){
+    // 一周して元に戻った＝実質変更なし。まとめ中の履歴があれば消す
+    if(last&&last.key===key){ state.log.pop(); }
+  }else{
+    logChange(`${name}／${it.item}：「${from||"空欄"}」→「${next||"空欄"}」`,key);
+    state.log[state.log.length-1]._from=from; // 起点の値を保持
+  }
   save();render();}
 let dpopTarget=null;
 function editDate(ev,id,name){ev.stopPropagation();closeAllPops();
@@ -1107,21 +1130,43 @@ function commentEntries(){
   }));
   return out;
 }
+// 各コメントの「見た目の指紋」。内容が変わると別物として未確認に戻る
+function commentSignatures(){ return commentEntries().map(e=>e.id+"::"+e.name+"::"+e.memo); }
+function getAckComments(){ try{ return new Set(JSON.parse(localStorage.getItem('ackComments')||"[]")); }catch(e){ return new Set(); } }
+function unseenCommentCount(){
+  const ack=getAckComments();
+  return commentSignatures().filter(s=>!ack.has(s)).length;
+}
 function updateCmtBadge(){
   const b=document.getElementById('cmtBadge');
   if(!b) return;
-  const n=commentEntries().length;
+  const n=unseenCommentCount();
   b.style.display=n?"flex":"none";
   b.textContent=n>99?"99+":n;
 }
+// 「確認」＝今あるコメントを全部見たことにする。バッジだけ消え、コメント本体は残る
+function ackComments(){
+  localStorage.setItem('ackComments',JSON.stringify(commentSignatures()));
+  updateCmtBadge();
+  openComments(); // 一覧の「新着」表示を更新
+  toast("コメントを確認済みにしました（コメント自体は残っています）");
+}
 function openComments(){
   const list=commentEntries();
-  document.getElementById('commentList').innerHTML=list.length?list.map(e=>`
+  const ack=getAckComments();
+  document.getElementById('commentList').innerHTML=list.length?list.map(e=>{
+    const isNew=!ack.has(e.id+"::"+e.name+"::"+e.memo);
+    return `
     <div class="cmtrow" onclick="closeModal('modalComments');jumpToItem(${e.id})">
+      ${isNew?'<span class="cmt-new">NEW</span>':''}
       <span class="cw">${escI(e.name)}さん</span>
       <span class="ci">${escI(e.item)}</span>
       <span class="cm">${escI(e.memo)}</span>
-    </div>`).join(''):'<div class="empty-note">コメントはまだありません</div>';
+    </div>`;
+  }).join(''):'<div class="empty-note">コメントはまだありません</div>';
+  // フッターの「確認」ボタンの出し分け
+  const ackBtn=document.getElementById('ackCommentsBtn');
+  if(ackBtn) ackBtn.style.display=unseenCommentCount()?"inline-flex":"none";
   openModal('modalComments');
 }
 
