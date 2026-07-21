@@ -293,6 +293,8 @@
 
   .summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .scard{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow)}
+  .scard.clickable{cursor:pointer;transition:border-color .15s}
+  .scard.clickable:hover{border-color:var(--brand)}
   .scard .n{font-size:26px;font-weight:800;color:var(--brand-d)}
   .scard .l{font-size:13px;color:var(--sub);margin-top:2px;font-weight:600}
 
@@ -529,6 +531,9 @@
       </div>
       <select id="whoFilter" class="who-filter" onchange="setWhoFilter(this.value)" title="担当者で絞り込み：その人が研修をやった項目・セルだけを表示します">
         <option value="">👥 担当者で絞込</option>
+      </select>
+      <select id="jobFilter" class="who-filter" onchange="setJobFilter(this.value)" title="職種で絞り込み：その職種の研修生だけを表示します（印刷にも反映）">
+        <option value="">🏷 職種で絞込</option>
       </select>
     </div>
   </header>
@@ -786,6 +791,12 @@ function saveCollapsed(){ try{ localStorage.setItem('collapsedCats',JSON.stringi
 function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 let filter="all";
 let filterWho=""; // 担当者絞込（空=絞込なし）
+let filterJob=""; // 職種絞込（空=全職種）
+
+// 表に表示する研修生（修了者を除き、職種絞込があればその職種だけ）
+function visibleNames(){
+  return activeNames().filter(n=>!filterJob || (state.traineeJob||{})[n]===filterJob);
+}
 
 // ヘッダーの高さをCSS変数に反映（表エリアの貼り付け位置・高さ計算に使う）
 function setHeaderVar(){
@@ -1023,10 +1034,11 @@ function closeAllPops(){
 function setFilter(el){document.querySelectorAll('.pill[data-f]').forEach(p=>p.classList.remove('active'));el.classList.add('active');filter=el.dataset.f;render();}
 function whoIncludes(it,n,admin){ return ((it.who&&it.who[n])||"").split("・").includes(admin); }
 function matchesFilter(it){
+  const names=visibleNames();
   // 担当者絞込：その担当者が誰かに教えた項目だけを表示
-  if(filterWho && !activeNames().some(n=>whoIncludes(it,n,filterWho))) return false;
+  if(filterWho && !names.some(n=>whoIncludes(it,n,filterWho))) return false;
   if(filter==="all")return true;
-  const vals=activeNames().map(n=>it.vals[n]||"");
+  const vals=names.map(n=>it.vals[n]||"");
   if(filter==="warn")return vals.includes("▲");
   if(filter==="empty")return vals.some(v=>v==="");
   return true;
@@ -1034,6 +1046,12 @@ function matchesFilter(it){
 function setWhoFilter(v){
   filterWho=v;
   const sel=document.getElementById('whoFilter');
+  if(sel) sel.classList.toggle('on',!!v);
+  render();
+}
+function setJobFilter(v){
+  filterJob=v;
+  const sel=document.getElementById('jobFilter');
   if(sel) sel.classList.toggle('on',!!v);
   render();
 }
@@ -1053,7 +1071,7 @@ function openWho(ev,id,name){
   popTarget={id,name};
   // 再描画された後の「今のDOMにあるボタン」を取り直す（開いたままの表示更新用）
   const rowEl=document.querySelector(`tr[data-id="${id}"]`);
-  const colIdx=activeNames().indexOf(name);
+  const colIdx=visibleNames().indexOf(name);
   popBtnEl=(rowEl&&colIdx>=0)?rowEl.querySelectorAll('.whobtn')[colIdx]:ev.target;
   const it=state.items.find(x=>x.id===id);
   const cur=(it.who[name]||"").split("・").filter(Boolean);
@@ -1105,7 +1123,8 @@ function applyWhoToRow(){
   const it=state.items.find(x=>x.id===popTarget.id);
   if(!it)return;
   const v=it.who[popTarget.name]||"";
-  const targets=activeNames().filter(n=>{ const s=it.vals[n]||""; return s==="○"||s==="▲"; });
+  // 表示中の研修生（職種絞込中はその職種だけ）のうち、○▲が付いた人に適用
+  const targets=visibleNames().filter(n=>{ const s=it.vals[n]||""; return s==="○"||s==="▲"; });
   if(!targets.length){
     toast("○か△が付いている人がいないため、適用しませんでした");
     return;
@@ -1148,13 +1167,36 @@ document.addEventListener('keydown',(e)=>{
 
 function render(){
   const q=(document.getElementById('search').value||"").trim().toLowerCase();
-  const names=activeNames(); // 修了者は表から除外（記録は保持）
+  const names=visibleNames(); // 修了者を除き、職種絞込があればその職種だけ
   const tbl=document.getElementById('tbl');
-  const sum=document.getElementById('summary');sum.innerHTML="";
-  const cats=[...new Set(state.items.map(i=>i.cat))].length;
-  [{n:names.length,l:"研修生"},{n:state.items.length,l:"研修項目"},{n:cats,l:"カテゴリ"}].forEach(c=>{sum.innerHTML+=`<div class="scard"><div class="n">${c.n}</div><div class="l">${c.l}</div></div>`;});
+
+  // ダッシュボード：要フォロー数・直近の実施数・停滞者を集計
   const avg=names.length?Math.round(names.reduce((a,n)=>a+progressFor(n).pct,0)/names.length):0;
-  sum.innerHTML+=`<div class="scard"><div class="n">${avg}%</div><div class="l">平均達成率</div></div>`;
+  const now=Date.now(), DAY=86400000;
+  let warnCount=0, weekCount=0; const staleNames=[];
+  names.forEach(n=>{
+    let latest=0;
+    state.items.forEach(it=>{
+      const v=it.vals[n]||"";
+      if(v==="▲") warnCount++;
+      const d=it.date[n];
+      if(d){
+        const t=new Date(d+"T00:00:00").getTime();
+        if(t>latest) latest=t;
+        if((v==="○"||v==="▲") && now-t<7*DAY) weekCount++;
+      }
+    });
+    if(latest && now-latest>30*DAY) staleNames.push(n);
+  });
+  const sum=document.getElementById('summary');
+  sum.innerHTML=`
+    <div class="scard"><div class="n">${names.length}</div><div class="l">研修生${filterJob?`（${filterJob}）`:""}</div></div>
+    <div class="scard"><div class="n">${avg}%</div><div class="l">平均達成率</div></div>
+    <div class="scard clickable" onclick="toggleWarnFilter()" title="クリックで要フォロー(▲)の項目だけに絞込／解除">
+      <div class="n" style="color:${warnCount?"var(--warn)":"var(--sub)"}">${warnCount}</div><div class="l">▲ 要フォロー</div></div>
+    <div class="scard" title="この7日間に日付が付いた○・▲の数"><div class="n" style="color:var(--ok)">${weekCount}</div><div class="l">直近7日の実施</div></div>
+    <div class="scard" title="${staleNames.length?("30日以上日付が付いていない: "+staleNames.join("・")):"全員が30日以内に実施あり"}">
+      <div class="n" style="color:${staleNames.length?"#b23b3b":"var(--sub)"}">${staleNames.length}</div><div class="l">30日以上停滞</div></div>`;
 
   let html="<thead><tr>";
   html+=`<th class="cat-h col-cat">カテゴリ</th><th class="item-h col-item">研修項目</th>`;
@@ -1210,6 +1252,7 @@ function render(){
   renderCatNav();
   updateCmtBadge();
   renderWhoFilter();
+  renderJobFilter();
 }
 
 // 担当者絞込セレクトの中身を最新の担当者一覧で作り直す（選択は維持）
@@ -1220,6 +1263,21 @@ function renderWhoFilter(){
   sel.innerHTML=`<option value="">👥 担当者で絞込</option>`+
     state.admins.map(a=>`<option value="${a.replace(/"/g,'&quot;')}" ${a===cur?"selected":""}>👥 ${a} が教えた項目</option>`).join('');
   sel.classList.toggle('on',!!cur);
+}
+// 職種絞込セレクト（選択は維持）
+function renderJobFilter(){
+  const sel=document.getElementById('jobFilter');
+  if(!sel) return;
+  const cur=filterJob;
+  sel.innerHTML=`<option value="">🏷 職種で絞込</option>`+
+    (state.jobTypes||[]).map(j=>`<option value="${j.name.replace(/"/g,'&quot;')}" ${j.name===cur?"selected":""}>🏷 ${j.name} のみ表示</option>`).join('');
+  sel.classList.toggle('on',!!cur);
+}
+// ダッシュボードの「▲要フォロー」カード：クリックで絞込のON/OFF
+function toggleWarnFilter(){
+  const target=filter==="warn"?"all":"warn";
+  const pill=document.querySelector(`.pill[data-f="${target}"]`);
+  if(pill) setFilter(pill);
 }
 
 /* ---- 設定メニュー ---- */
@@ -1740,9 +1798,24 @@ function ensureExcelJS(){
 }
 
 async function buildExcelWorkbook(){
-  const FONT="Yu Gothic";
   const wb=new ExcelJS.Workbook();
-  const ws=wb.addWorksheet("研修進捗",{
+  // 1枚目：全員のシート
+  addProgressSheet(wb,"研修進捗",activeNames(),{});
+  // 2枚目以降：職種ごとのシート（その職種の研修生がいる場合のみ。
+  // 全員が―（対象外）の行は省いて、その職種の実施項目だけの表にする）
+  (state.jobTypes||[]).forEach(j=>{
+    const members=activeNames().filter(n=>(state.traineeJob||{})[n]===j.name);
+    if(!members.length) return;
+    const sheetName=j.name.replace(/[\[\]:*?\/\\]/g,"_").slice(0,28)||"職種";
+    addProgressSheet(wb, sheetName, members, {label:j.name, skipAllDash:true});
+  });
+  return wb;
+}
+
+// 進捗表を1シート分描く（names=載せる研修生、opts.skipAllDash=全員―の行を省く）
+function addProgressSheet(wb, sheetName, names, opts){
+  const FONT="Yu Gothic";
+  const ws=wb.addWorksheet(sheetName,{
     pageSetup:{
       paperSize:9, orientation:"portrait",           // A4縦
       fitToPage:true, fitToWidth:1, fitToHeight:0,   // 横幅を1ページに収める
@@ -1752,7 +1825,6 @@ async function buildExcelWorkbook(){
     views:[{state:"frozen",ySplit:4}],
   });
 
-  const names=activeNames(); // 修了者はExcelにも出さない
   const lastCol=2+names.length+1; // カテゴリ+項目+研修生...+担当者
   const thin={style:"thin",color:{argb:"FFB8C4CE"}};
   const border={top:thin,left:thin,bottom:thin,right:thin};
@@ -1769,7 +1841,7 @@ async function buildExcelWorkbook(){
   // 1行目：タイトル＋出力日
   ws.mergeCells(1,1,1,lastCol-1);
   const title=ws.getCell(1,1);
-  title.value="～　新人研修プログラム　進捗表　～";
+  title.value=`～　新人研修プログラム　進捗表${opts.label?`（${opts.label}）`:""}　～`;
   title.font={name:FONT,size:14,bold:true,color:{argb:"FF0B4568"}};
   title.alignment={horizontal:"center",vertical:"middle"};
   const dcell=ws.getCell(1,lastCol);
@@ -1826,6 +1898,8 @@ async function buildExcelWorkbook(){
     if(prevCat!==null && endRow>catStart) ws.mergeCells(catStart,1,endRow,1);
   };
   state.items.forEach((it)=>{
+    // 職種シート：全員が対象外(―)の項目は載せない
+    if(opts.skipAllDash && names.every(n=>(it.vals[n]||"")==="―")) return;
     if(it.cat!==prevCat){
       flushCatMerge(r-1);
       prevCat=it.cat; catStart=r;
@@ -1874,7 +1948,6 @@ async function buildExcelWorkbook(){
     r++;
   });
   flushCatMerge(r-1);
-  return wb;
 }
 
 /* ---- Excel取込（差分をポップアップで確認してから反映） ---- */
