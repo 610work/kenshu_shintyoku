@@ -364,6 +364,17 @@
   .histrow .hx{flex:1;word-break:break-all}
   /* 修了した研修生の行 */
   .listrow.archived{background:#f4f6f8;color:var(--sub)}
+  /* 職種セレクト */
+  .job-select{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;font-family:inherit;background:#fff;color:var(--ink);outline:none;cursor:pointer}
+  .job-select:focus{border-color:var(--brand)}
+  /* 職種の対象外エディタ */
+  #jobExcludeEditor{max-height:40vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+  .jobcat{border-bottom:1px solid var(--line2);padding:8px 0}
+  .jobcat:last-child{border-bottom:none}
+  .jobcat-h{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:13px;color:var(--brand-d);flex-wrap:wrap}
+  .jobcat-h b{flex-shrink:0}
+  .job-item{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;background:var(--bg);border-radius:7px;padding:4px 8px;margin:2px 4px 2px 0;cursor:pointer}
+  .job-item input{width:auto;margin:0;cursor:pointer}
   /* 操作者の選択ボタン */
   .op-choice{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;
     padding:10px 14px;border-radius:9px;margin-bottom:7px;font-size:14.5px;cursor:pointer;font-weight:600}
@@ -552,6 +563,7 @@
   <button onclick="closeAllPops();openTrainees()">👥 研修生を管理</button>
   <button onclick="closeAllPops();openAdmins()">🧑‍🏫 担当者を管理</button>
   <button onclick="closeAllPops();openItems()">📋 項目を編集</button>
+  <button onclick="closeAllPops();openJobs()">🏷 職種ごとの対象外設定</button>
   <div class="pop-actions">
     <button onclick="closeAllPops();exportData()">💾 バックアップ（保存）</button>
     <button onclick="closeAllPops();importBackup()">↩ バックアップから復元</button>
@@ -584,9 +596,13 @@
   <div class="modal">
     <div class="modal-h"><h2>研修生を管理</h2><button class="modal-x" onclick="closeModal('modalTrainees')">×</button></div>
     <div class="modal-b">
-      <div class="subhead">研修生の追加・削除・並べ替え</div>
+      <div class="subhead">研修生の追加・削除・並べ替え（職種を選ぶと、その職種で対象外の項目に自動で―が入ります）</div>
       <div id="traineeList"></div>
-      <div class="addrow"><input id="newTrainee" placeholder="新しい研修生の名前" onkeydown="if(event.key==='Enter')addTrainee()"><button class="btn primary" onclick="addTrainee()">追加</button></div>
+      <div class="addrow">
+        <input id="newTrainee" placeholder="新しい研修生の名前" onkeydown="if(event.key==='Enter')addTrainee()">
+        <select id="newTraineeJob" class="job-select"></select>
+        <button class="btn primary" onclick="addTrainee()">追加</button>
+      </div>
     </div>
     <div class="modal-f"><button class="btn primary" onclick="closeModal('modalTrainees')">完了</button></div>
   </div>
@@ -613,6 +629,23 @@
       <div class="addrow"><input id="newCat" placeholder="新しいカテゴリ名" onkeydown="if(event.key==='Enter')addCat()"><button class="btn primary" onclick="addCat()">カテゴリ追加</button></div>
     </div>
     <div class="modal-f"><button class="btn primary" onclick="closeModal('modalItems')">完了</button></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalJobs">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-h"><h2>🏷 職種ごとの対象外(―)設定</h2><button class="modal-x" onclick="closeModal('modalJobs')">×</button></div>
+    <div class="modal-b">
+      <div class="subhead">職種の追加・削除。研修生の追加時に選んだ職種で「対象外」にした項目へ、自動で―が入ります。</div>
+      <div id="jobList"></div>
+      <div class="addrow"><input id="newJob" placeholder="新しい職種名（例：整備）" onkeydown="if(event.key==='Enter')addJob()"><button class="btn primary" onclick="addJob()">職種を追加</button></div>
+      <div style="height:14px;"></div>
+      <div class="subhead">職種を選び、その職種が「やらない項目（＝―にする）」にチェックしてください。</div>
+      <select id="jobSelect" class="job-select" style="width:100%;margin-bottom:10px" onchange="renderJobExcludes()"></select>
+      <div id="jobExcludeEditor"></div>
+      <button class="btn" style="margin-top:10px" onclick="applyJobToExisting()">この職種の既存研修生に今すぐ反映</button>
+    </div>
+    <div class="modal-f"><button class="btn primary" onclick="closeModal('modalJobs')">完了</button></div>
   </div>
 </div>
 
@@ -676,9 +709,30 @@ let state = JSON.parse(JSON.stringify(DATA));
 if(!state.admins) state.admins = ['中嶋','社長','武藤','岡崎'];
 if(!state.archived) state.archived = []; // 修了した研修生（表からは隠すが記録は残す）
 if(!state.log) state.log = [];           // 変更履歴（最新300件）
+// 職種（営業・営業事務・事務…）。exclude=その職種では対象外(―)にする項目IDの配列
+const DEFAULT_JOBS=[{name:"営業",exclude:[]},{name:"営業事務",exclude:[]},{name:"事務",exclude:[]}];
+if(!state.jobTypes || !state.jobTypes.length) state.jobTypes = JSON.parse(JSON.stringify(DEFAULT_JOBS));
+if(!state.traineeJob) state.traineeJob = {}; // 研修生名 → 職種名
 
 // 表示・出力対象の研修生（修了者を除く）
 function activeNames(){ return state.names.filter(n=>!(state.archived||[]).includes(n)); }
+
+// 職種の定義を名前で取得
+function jobByName(nm){ return (state.jobTypes||[]).find(j=>j.name===nm); }
+// 研修生の職種に合わせて対象外(―)を反映する。
+// twoWay=true のとき、対象に戻った項目の―も空欄に戻す（○▲書は絶対に触らない）
+function syncJob(name, twoWay){
+  const jt=jobByName((state.traineeJob||{})[name]);
+  const exSet=new Set(jt?(jt.exclude||[]):[]);
+  state.items.forEach(it=>{
+    const cur=it.vals[name]||"";
+    if(exSet.has(it.id)){
+      if(cur===""||cur==="―"){ it.vals[name]="―"; it.date[name]=""; }
+    }else if(twoWay && cur==="―"){
+      it.vals[name]="";
+    }
+  });
+}
 
 // 操作している人の名前（端末ごとに記憶）
 function getOperator(){ return localStorage.getItem('operatorName')||""; }
@@ -803,7 +857,8 @@ window.addEventListener('DOMContentLoaded',()=>{
 // state を保存用のプレーンなオブジェクトに変換
 function serializeState(){
   return { names: state.names, admins: state.admins, items: state.items,
-    archived: state.archived||[], log: state.log||[], _updated: Date.now() };
+    archived: state.archived||[], log: state.log||[],
+    jobTypes: state.jobTypes||[], traineeJob: state.traineeJob||{}, _updated: Date.now() };
 }
 window.serializeState = serializeState;
 
@@ -815,6 +870,8 @@ window.applyRemoteState = function(remote){
   state.items = remote.items;
   state.archived = remote.archived || [];
   state.log = remote.log || [];
+  state.jobTypes = (remote.jobTypes && remote.jobTypes.length) ? remote.jobTypes : (state.jobTypes||JSON.parse(JSON.stringify(DEFAULT_JOBS)));
+  state.traineeJob = remote.traineeJob || {};
   // 古い「管理者確認」データ(admin)はもう使わないので取り除く。
   // DB上にも残っていれば、この後で一度だけ保存して完全に消す。
   let hadAdmin=false;
@@ -1222,13 +1279,22 @@ function openModal(id){document.getElementById(id).classList.add('show');}
 function closeModal(id){document.getElementById(id).classList.remove('show');render();}
 
 function openTrainees(){renderTraineeList();openModal('modalTrainees');}
+// 職種の<option>群（追加行・各研修生の切替に共通で使う）
+function jobOptionsHtml(selected){
+  return `<option value="">（職種なし）</option>`+
+    (state.jobTypes||[]).map(j=>`<option value="${j.name.replace(/"/g,'&quot;')}" ${j.name===selected?"selected":""}>${j.name}</option>`).join("");
+}
 function renderTraineeList(){
   const box=document.getElementById('traineeList');box.innerHTML="";
   const arch=state.archived||[];
+  const jobSel=document.getElementById('newTraineeJob');
+  if(jobSel) jobSel.innerHTML=jobOptionsHtml(jobSel.value||"");
   state.names.forEach((n,i)=>{
     if(arch.includes(n)) return; // 修了者は下の別枠に表示
+    const job=(state.traineeJob||{})[n]||"";
     box.innerHTML+=`<div class="listrow">
       <span class="name">${n}</span>
+      <select class="job-select" onchange="changeTraineeJob('${n.replace(/'/g,"\\'")}',this.value)">${jobOptionsHtml(job)}</select>
       <button class="mini up" onclick="moveTrainee(${i},-1)" ${i===0?'disabled style=opacity:.3':''}>↑</button>
       <button class="mini down" onclick="moveTrainee(${i},1)" ${i===state.names.length-1?'disabled style=opacity:.3':''}>↓</button>
       <button class="mini" style="color:#1f7a44" onclick="archiveTrainee('${n.replace(/'/g,"\\'")}')">修了</button>
@@ -1268,10 +1334,117 @@ function addTrainee(){
     toast("同じ名前があります");return;
   }
   state.names.push(nm);state.items.forEach(it=>{it.vals[nm]="";it.who[nm]="";it.date[nm]="";it.memo[nm]="";});
-  logChange(`研修生「${nm}」を追加`);
-  inp.value="";save();renderTraineeList();toast(`「${nm}」を追加しました`);
+  // 選んだ職種を記録し、その職種で対象外の項目に自動で―を入れる
+  const jobSel=document.getElementById('newTraineeJob');
+  const job=jobSel?jobSel.value:"";
+  state.traineeJob=state.traineeJob||{};
+  state.traineeJob[nm]=job;
+  syncJob(nm,false);
+  logChange(`研修生「${nm}」を追加${job?`（職種：${job}）`:""}`);
+  inp.value="";save();renderTraineeList();toast(`「${nm}」を追加しました${job?`（${job}）`:""}`);
 }
-function delTrainee(n){if(!confirm(`「${n}」の記録をすべて削除しますか？\nこの操作は元に戻せません（修了にして隠すだけなら「修了」を使ってください）。`))return;state.names=state.names.filter(x=>x!==n);state.archived=(state.archived||[]).filter(x=>x!==n);state.items.forEach(it=>{delete it.vals[n];delete it.who[n];delete it.date[n];delete it.memo[n];});logChange(`研修生「${n}」を完全に削除`);save();renderTraineeList();toast(`「${n}」を削除しました`);}
+// 研修生の職種を変更 → 対象外(―)を入れ直す（○▲書は触らない）
+function changeTraineeJob(name,job){
+  state.traineeJob=state.traineeJob||{};
+  state.traineeJob[name]=job;
+  syncJob(name,true);
+  logChange(`研修生「${name}」の職種を「${job||"なし"}」に`);
+  save();renderTraineeList();
+}
+function delTrainee(n){if(!confirm(`「${n}」の記録をすべて削除しますか？\nこの操作は元に戻せません（修了にして隠すだけなら「修了」を使ってください）。`))return;state.names=state.names.filter(x=>x!==n);state.archived=(state.archived||[]).filter(x=>x!==n);if(state.traineeJob)delete state.traineeJob[n];state.items.forEach(it=>{delete it.vals[n];delete it.who[n];delete it.date[n];delete it.memo[n];});logChange(`研修生「${n}」を完全に削除`);save();renderTraineeList();toast(`「${n}」を削除しました`);}
+
+/* ---- 職種ごとの対象外(―)設定 ---- */
+function openJobs(){
+  const sel=document.getElementById('jobSelect');
+  const prev=sel.value;
+  renderJobList();
+  sel.innerHTML=(state.jobTypes||[]).map(j=>`<option value="${j.name.replace(/"/g,'&quot;')}">${j.name}</option>`).join("");
+  if(prev && jobByName(prev)) sel.value=prev;
+  renderJobExcludes();
+  openModal('modalJobs');
+}
+function renderJobList(){
+  const box=document.getElementById('jobList');
+  box.innerHTML=(state.jobTypes||[]).map((j,i)=>`<div class="listrow">
+    <input class="name" value="${j.name.replace(/"/g,'&quot;')}" style="border:none;background:transparent;font-weight:600;outline:none" onchange="renameJob('${j.name.replace(/'/g,"\\'")}',this.value)">
+    <span class="tsub" style="color:#9aa7b3;font-size:12px">対象外 ${(j.exclude||[]).length}件</span>
+    <button class="mini" onclick="delJob('${j.name.replace(/'/g,"\\'")}')">削除</button>
+  </div>`).join("");
+}
+function addJob(){
+  const inp=document.getElementById('newJob');const nm=(inp.value||"").trim();
+  if(!nm)return; if(jobByName(nm)){toast("同じ職種があります");return;}
+  state.jobTypes.push({name:nm,exclude:[]});
+  logChange(`職種「${nm}」を追加`);
+  inp.value="";save();openJobs();toast(`職種「${nm}」を追加`);
+}
+function renameJob(oldN,newN){
+  newN=(newN||"").trim(); if(!newN||newN===oldN)return;
+  const j=jobByName(oldN); if(!j)return;
+  if(jobByName(newN)){toast("同じ職種があります");renderJobList();return;}
+  j.name=newN;
+  // その職種を使っている研修生の割り当ても更新
+  Object.keys(state.traineeJob||{}).forEach(k=>{ if(state.traineeJob[k]===oldN) state.traineeJob[k]=newN; });
+  logChange(`職種「${oldN}」を「${newN}」に改名`);
+  save();openJobs();
+}
+function delJob(nm){
+  if(!confirm(`職種「${nm}」を削除しますか？\n（この職種だった研修生は「職種なし」になります。入力済みの―はそのまま残ります）`))return;
+  state.jobTypes=state.jobTypes.filter(j=>j.name!==nm);
+  Object.keys(state.traineeJob||{}).forEach(k=>{ if(state.traineeJob[k]===nm) state.traineeJob[k]=""; });
+  logChange(`職種「${nm}」を削除`);
+  save();openJobs();toast(`職種「${nm}」を削除`);
+}
+// 選択中の職種の「対象外にする項目」チェックリスト（カテゴリごと）
+function renderJobExcludes(){
+  const nm=document.getElementById('jobSelect').value;
+  const j=jobByName(nm);
+  const box=document.getElementById('jobExcludeEditor');
+  if(!j){ box.innerHTML='<div class="empty-note">職種を追加してください</div>'; return; }
+  const exSet=new Set(j.exclude||[]);
+  const cats=[...new Set(state.items.map(i=>i.cat))];
+  box.innerHTML=cats.map(cat=>{
+    const rows=state.items.filter(i=>i.cat===cat);
+    const catCount=rows.filter(it=>exSet.has(it.id)).length;
+    const items=rows.map(it=>`<label class="job-item"><input type="checkbox" ${exSet.has(it.id)?"checked":""} onchange="toggleJobExclude(${it.id},this.checked)"> ${escI(it.item)}</label>`).join("");
+    return `<div class="jobcat"><div class="jobcat-h">
+      <b>${escI(cat)}</b>
+      <button class="mini" onclick="toggleJobCat('${cat.replace(/'/g,"\\'")}',true)">全て対象外</button>
+      <button class="mini" onclick="toggleJobCat('${cat.replace(/'/g,"\\'")}',false)">全て解除</button>
+      <span style="color:#9aa7b3;font-size:11px">対象外 ${catCount}/${rows.length}</span>
+    </div>${items}</div>`;
+  }).join("");
+}
+function toggleJobExclude(id,on){
+  const j=jobByName(document.getElementById('jobSelect').value); if(!j)return;
+  j.exclude=j.exclude||[];
+  const s=new Set(j.exclude);
+  if(on) s.add(id); else s.delete(id);
+  j.exclude=[...s];
+  save();renderJobList();
+  // カテゴリ見出しの件数だけ軽く更新
+  const box=document.getElementById('jobExcludeEditor');
+  const scrollY=box.scrollTop; renderJobExcludes(); box.scrollTop=scrollY;
+}
+function toggleJobCat(cat,on){
+  const j=jobByName(document.getElementById('jobSelect').value); if(!j)return;
+  const ids=state.items.filter(i=>i.cat===cat).map(i=>i.id);
+  const s=new Set(j.exclude||[]);
+  ids.forEach(id=>{ if(on)s.add(id); else s.delete(id); });
+  j.exclude=[...s];
+  save();renderJobList();renderJobExcludes();
+}
+// 選択中の職種の既存研修生に、対象外設定を今すぐ反映
+function applyJobToExisting(){
+  const nm=document.getElementById('jobSelect').value;
+  const j=jobByName(nm); if(!j)return;
+  const targets=state.names.filter(n=>(state.traineeJob||{})[n]===nm);
+  if(!targets.length){ toast(`職種「${nm}」の研修生がいません`); return; }
+  if(!confirm(`職種「${nm}」の研修生${targets.length}名に、対象外(―)設定を反映します。\n（未実施・―のマスのみ変更し、○▲書には触れません）`))return;
+  targets.forEach(n=>syncJob(n,true));
+  logChange(`職種「${nm}」の対象外を${targets.length}名に反映`);
+  save();render();toast(`${targets.length}名に反映しました`);
+}
 function moveTrainee(i,d){const j=i+d;if(j<0||j>=state.names.length)return;[state.names[i],state.names[j]]=[state.names[j],state.names[i]];save();renderTraineeList();}
 
 function openAdmins(){renderAdminList();openModal('modalAdmins');}
@@ -1525,6 +1698,8 @@ function importBackup(){
         state.items=data.items;
         state.archived=data.archived||[];
         state.log=data.log||state.log||[];
+        state.jobTypes=(data.jobTypes&&data.jobTypes.length)?data.jobTypes:state.jobTypes;
+        state.traineeJob=data.traineeJob||{};
         _uid=state.items.reduce((m,it)=>Math.max(m,it.id||0),0)+1;
         state.items.forEach(it=>{
           if(!it.vals)it.vals={}; if(!it.who)it.who={}; if(!it.date)it.date={}; if(!it.memo)it.memo={};
