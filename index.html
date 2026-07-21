@@ -1173,20 +1173,14 @@ function render(){
   // ダッシュボード：要フォロー数・直近の実施数・停滞者を集計
   const avg=names.length?Math.round(names.reduce((a,n)=>a+progressFor(n).pct,0)/names.length):0;
   const now=Date.now(), DAY=86400000;
-  let warnCount=0, weekCount=0; const staleNames=[];
+  let warnCount=0, weekCount=0;
   names.forEach(n=>{
-    let latest=0;
     state.items.forEach(it=>{
       const v=it.vals[n]||"";
       if(v==="▲") warnCount++;
       const d=it.date[n];
-      if(d){
-        const t=new Date(d+"T00:00:00").getTime();
-        if(t>latest) latest=t;
-        if((v==="○"||v==="▲") && now-t<7*DAY) weekCount++;
-      }
+      if(d && (v==="○"||v==="▲") && now-new Date(d+"T00:00:00").getTime()<7*DAY) weekCount++;
     });
-    if(latest && now-latest>30*DAY) staleNames.push(n);
   });
   const sum=document.getElementById('summary');
   sum.innerHTML=`
@@ -1194,9 +1188,7 @@ function render(){
     <div class="scard"><div class="n">${avg}%</div><div class="l">平均達成率</div></div>
     <div class="scard clickable" onclick="toggleWarnFilter()" title="クリックで要フォロー(▲)の項目だけに絞込／解除">
       <div class="n" style="color:${warnCount?"var(--warn)":"var(--sub)"}">${warnCount}</div><div class="l">▲ 要フォロー</div></div>
-    <div class="scard" title="この7日間に日付が付いた○・▲の数"><div class="n" style="color:var(--ok)">${weekCount}</div><div class="l">直近7日の実施</div></div>
-    <div class="scard" title="${staleNames.length?("30日以上日付が付いていない: "+staleNames.join("・")):"全員が30日以内に実施あり"}">
-      <div class="n" style="color:${staleNames.length?"#b23b3b":"var(--sub)"}">${staleNames.length}</div><div class="l">30日以上停滞</div></div>`;
+    <div class="scard" title="この7日間に日付が付いた○・▲の数"><div class="n" style="color:var(--ok)">${weekCount}</div><div class="l">直近7日の実施</div></div>`;
 
   let html="<thead><tr>";
   html+=`<th class="cat-h col-cat">カテゴリ</th><th class="item-h col-item">研修項目</th>`;
