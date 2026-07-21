@@ -289,6 +289,7 @@
   .progbar span{display:block;height:100%;background:linear-gradient(90deg,#1f9d57,#4bbd7a);border-radius:3px}
   .progtxt{font-size:13.5px;color:var(--ok);font-weight:700}
   .name-th{font-size:17px;color:var(--ink)}
+  .name-job{font-size:11px;color:#9aa7b3;font-weight:600;margin-top:1px}
 
   .summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .scard{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow)}
@@ -436,7 +437,7 @@
   @media print{
     @page{size:A4 portrait;margin:9mm 7mm}
     body{background:#fff;font-size:9.5px}
-    header,.summary,.note,.note-details,.searchbox,.btn,.filterpills,.modal-bg,.pop,.toast,#gate,.catnav{display:none !important}
+    header,.summary,.note,.note-details,.searchbox,.btn,.filterpills,.who-filter,.modal-bg,.pop,.dpop,.cpop,.toast,#gate,.catnav{display:none !important}
     .layout{display:block}
     .wrap{margin:0;padding:0;max-width:none}
     .tablecard{box-shadow:none;border:none;border-radius:0}
@@ -452,6 +453,7 @@
     tbody tr:hover td{background:transparent}
     .prog{font-size:8px}
     .name-th{font-size:10.5px;font-weight:700}
+    .name-job{font-size:7.5px}
     .progbar{width:40px}
     .stcell{min-width:0}
     .cellbox{gap:1px}
@@ -496,7 +498,7 @@
       <div class="spacer"></div>
       <div class="searchbox">
         <svg viewBox="0 0 20 20"><path d="M8 4a4 4 0 103.2 6.4l3.1 3.1 1.4-1.4-3.1-3.1A4 4 0 008 4zm0 2a2 2 0 110 4 2 2 0 010-4z"/></svg>
-        <input id="search" placeholder="項目を検索…" oninput="render()">
+        <input id="search" type="search" placeholder="項目を検索…" oninput="render()">
       </div>
       <button class="btn" style="position:relative" onclick="openComments()" title="コメントが入っている箇所の一覧。クリックでその項目へ移動できます">🗨 コメント<span class="redbadge" id="cmtBadge" style="display:none"></span></button>
       <button class="btn" onclick="printAll()">印刷</button>
@@ -781,8 +783,6 @@ state.items.forEach(it=>{ if(!it.who) it.who={}; if(!it.date) it.date={}; if(!it
 let collapsedCats=new Set();
 try{ collapsedCats=new Set(JSON.parse(localStorage.getItem('collapsedCats')||"[]")); }catch(e){}
 function saveCollapsed(){ try{ localStorage.setItem('collapsedCats',JSON.stringify([...collapsedCats])); }catch(e){} }
-const initialSnapshot=JSON.stringify(state);
-let savedSnapshot=initialSnapshot;
 function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 let filter="all";
 let filterWho=""; // 担当者絞込（空=絞込なし）
@@ -886,7 +886,6 @@ window.applyRemoteState = function(remote){
       else if(typeof it.memo[n]==="string") it.memo[n]=it.memo[n].trim()?{"（以前の記録）":it.memo[n]}:{};
     });
   });
-  savedSnapshot = JSON.stringify(state);
   render();
   // DB上に古いadminが残っていたら、一度だけ保存して完全に削除する。
   // （fbSave側が_applyingRemote中の保存を無視するので、次のフレームで呼ぶ）
@@ -904,10 +903,8 @@ window.fbStatus = function(kind, msg){
 
 // 変更を保存する共通関数（各操作の最後に呼ぶ）
 function save(){
-  savedSnapshot = JSON.stringify(state);
   if(window.fbSave) window.fbSave(serializeState());
 }
-document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')tryLogin();});
 
 function stClass(v){return v==="○"?"st-ok":v==="▲"?"st-warn":v==="―"?"st-skip":v==="書"?"st-doc":"st-empty";}
 function cycle(id,name){const it=state.items.find(x=>x.id===id);const cur=it.vals[name]||"";const next=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];it.vals[name]=next;
@@ -1161,7 +1158,14 @@ function render(){
 
   let html="<thead><tr>";
   html+=`<th class="cat-h col-cat">カテゴリ</th><th class="item-h col-item">研修項目</th>`;
-  names.forEach(n=>{const p=progressFor(n);html+=`<th><div class="name-th">${n}</div><div class="prog"><div class="progbar"><span style="width:${p.pct}%"></span></div><div class="progtxt">${p.pct}%</div></div></th>`;});
+  names.forEach(n=>{
+    const p=progressFor(n);
+    const job=(state.traineeJob||{})[n]||"";
+    html+=`<th title="○ ${p.done}件／対象 ${p.total}項目">
+      <div class="name-th">${n}</div>
+      ${job?`<div class="name-job">${job}</div>`:""}
+      <div class="prog"><div class="progbar"><span style="width:${p.pct}%"></span></div><div class="progtxt">${p.pct}%</div></div></th>`;
+  });
   html+="</tr></thead><tbody>";
   let lastCat=null,shown=0;
   const catCounts={};state.items.forEach(x=>{catCounts[x.cat]=(catCounts[x.cat]||0)+1;});
@@ -1717,7 +1721,7 @@ function importBackup(){
 
 function toggleCat(cat){if(collapsedCats.has(cat))collapsedCats.delete(cat);else collapsedCats.add(cat);saveCollapsed();render();}
 function printAll(){collapsedCats.clear();render();setTimeout(()=>window.print(),100);}
-function exportData(){const blob=new Blob([JSON.stringify(state,null,1)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="研修進捗_"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(url);savedSnapshot=JSON.stringify(state);toast("バックアップを書き出しました");}
+function exportData(){const blob=new Blob([JSON.stringify(state,null,1)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="研修進捗_"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(url);toast("バックアップを書き出しました");}
 
 /* ---- Excel出力（紙の研修ファイルと同じA4縦チェック表形式） ---- */
 // 生成ライブラリ(ExcelJS)は初回クリック時にだけCDNから読み込む（普段の表示を重くしない）
