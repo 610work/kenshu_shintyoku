@@ -276,6 +276,19 @@
   .datebtn{font-size:13.5px;color:#c0cad3;background:none;border:none;padding:0 3px;cursor:pointer;line-height:1.2;font-variant-numeric:tabular-nums}
   .datebtn:hover{color:var(--brand)}
   .datebtn.set{color:var(--sub);font-weight:600}
+  /* 今日更新されたセルの目印。日付の後ろで淡く点滅させる。
+     表全体が同時に描画されるので、すべての四角の点滅は自然に揃う。 */
+  .todaymark{
+    display:inline-block;width:7px;height:7px;border-radius:2px;flex-shrink:0;
+    background:var(--ok);animation:todayPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes todayPulse{
+    0%,100%{opacity:.25;}
+    50%    {opacity:1;box-shadow:0 0 4px rgba(31,157,87,.7);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .todaymark{animation:none;opacity:.85;}
+  }
   .cmtbtn{font-size:14.5px;background:none;border:none;padding:0 2px;cursor:pointer;color:#c0cad3;line-height:1}
   .cmtbtn:hover{color:var(--brand)}
   /* コメントあり：赤い吹き出し（視認性を上げるためCSSで描画） */
@@ -477,6 +490,7 @@
     .st-empty{color:#ccc !important}
     .datebtn{font-size:8px;color:#555;padding:0}
     .datebtn:not(.set){display:none}
+    .todaymark{display:none}
     .cmtbtn{display:none}
     .cellrow{gap:0}
     .catarrow{display:none}
@@ -779,6 +793,17 @@ function memoMap(it,name){
   if(typeof m==="string") return m.trim()?{"（以前の記録）":m}:{};
   return m;
 }
+// そのセルを最後に触った日を記録する。
+// 研修日(date)は「初めて○/▲を付けた日」なので、後から記号やコメントを
+// 直した場合には変わらない。「今日動いた項目」を光らせるために別で持つ。
+function markUpdated(it,name){
+  if(!it) return;
+  if(!it.upd) it.upd={};
+  it.upd[name]=todayStr();
+}
+// そのセルが今日更新されたか
+function updatedToday(it,name){ return !!(it.upd && it.upd[name]===todayStr()); }
+
 // 1件のコメント値は「文字列」（旧）または {text,date}（新）。両対応で取り出す
 function memoText(v){ return (v&&typeof v==="object")?(v.text||""):(v||""); }
 function memoDate(v){ return (v&&typeof v==="object")?(v.date||""):""; }
@@ -1004,6 +1029,7 @@ function cycle(id,name){const it=state.items.find(x=>x.id===id);
   // ○/▲以外（未実施・対象外・書類）に変わったら日付は不要なのでクリアする
   if(next==="○"||next==="▲"){ if(!it.date[name]) it.date[name]=todayStr(); }
   else if(next==="―" && it.date[name]) it.date[name]=""; // 対象外に戻した時だけ消す（書・未実施は日付を残す）
+  markUpdated(it,name);
   // 同じマスを続けて切り替えている間は履歴を1件にまとめる。
   // 連続操作の「最初の値」を起点に、最終的な値だけを残す。
   const key="cell:"+id+":"+name;
@@ -1030,8 +1056,8 @@ function editDate(ev,id,name){ev.stopPropagation();closeAllPops();
   dp.classList.add('show');
   setTimeout(()=>{try{inp.showPicker&&inp.showPicker();}catch(e){}},50);
 }
-function applyDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);if(!it){closeAllPops();render();return;}const v=document.getElementById('dpopInput').value||"";it.date[dpopTarget.name]=v;logChange(`${dpopTarget.name}／${it.item}：日付を${v||"クリア"}に`);}closeAllPops();save();render();}
-function clearDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);if(!it){closeAllPops();render();return;}it.date[dpopTarget.name]="";logChange(`${dpopTarget.name}／${it.item}：日付をクリア`);}closeAllPops();save();render();}
+function applyDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);if(!it){closeAllPops();render();return;}const v=document.getElementById('dpopInput').value||"";it.date[dpopTarget.name]=v;markUpdated(it,dpopTarget.name);logChange(`${dpopTarget.name}／${it.item}：日付を${v||"クリア"}に`);}closeAllPops();save();render();}
+function clearDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);if(!it){closeAllPops();render();return;}it.date[dpopTarget.name]="";markUpdated(it,dpopTarget.name);logChange(`${dpopTarget.name}／${it.item}：日付をクリア`);}closeAllPops();save();render();}
 let cpopTarget=null;
 function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   const author=getOperator();
@@ -1084,6 +1110,7 @@ function applyMemo(){
     const txt=document.getElementById('cpopText').value.trim();
     if(txt) it.memo[cpopTarget.name][author]={text:txt, date:todayStr()};
     else delete it.memo[cpopTarget.name][author];
+    markUpdated(it,cpopTarget.name);
     logChange(`${cpopTarget.name}／${it.item}：${author}のコメントを${txt?"更新":"削除"}`);
   }
   closeAllPops();save();render();
@@ -1094,6 +1121,7 @@ function clearMemo(){
     const author=getOperator()||"（名前未設定）";
     if(typeof it.memo[cpopTarget.name]==="object"&&it.memo[cpopTarget.name]) delete it.memo[cpopTarget.name][author];
     else it.memo[cpopTarget.name]={};
+    markUpdated(it,cpopTarget.name);
     logChange(`${cpopTarget.name}／${it.item}：${author}のコメントを削除`);
   }
   closeAllPops();save();render();
@@ -1204,7 +1232,7 @@ function applyWhoToRow(){
     toast("○か△が付いている人がいないため、適用しませんでした");
     return;
   }
-  targets.forEach(n=>{ it.who[n]=v; });
+  targets.forEach(n=>{ it.who[n]=v; markUpdated(it,n); });
   whoDirty=false; popBtnEl=null;   // closeAllPops側の二重処理を防ぐ
   logChange(`${it.item}：○△が付いた${targets.length}名の担当者を「${v||"なし"}」に一括設定`);
   document.getElementById('pop').classList.remove('show');
@@ -1217,6 +1245,7 @@ function whoChanged(){
   const it=state.items.find(x=>x.id===popTarget.id);
   if(!it){ toast("この項目は削除されました"); closeAllPops(); render(); return; }
   it.who[popTarget.name]=checked.join("・");
+  markUpdated(it,popTarget.name);
   // その場で保存する（ポップを閉じるまで保存を遅らせると、他の人の更新が届いた
   // タイミングで選択が消え、しかも「なし」という誤った履歴が残ってしまう）
   logChange(`${popTarget.name}／${it.item}：担当者を「${it.who[popTarget.name]||"なし"}」に`,"who:"+popTarget.id+":"+popTarget.name);
@@ -1309,6 +1338,7 @@ function render(){
         <button class="stbtn ${stClass(v)}" onclick="cycle(${it.id},${escJ(n)})">${v||"·"}</button>
         <div class="cellrow">
           <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},${escJ(n)})">${dtShort||"日付"}</button>
+          ${updatedToday(it,n)?'<span class="todaymark" title="今日更新されました"></span>':''}
           <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},${escJ(n)})" title="${escA(memoTip)}">${memoOn?"":"🗨"}</button>
         </div>
         <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},${escJ(n)})" title="${escA(who)}">${escI(who)}</button>
@@ -2279,6 +2309,7 @@ function applyImport(){
       if(!it) return;
       it.vals[name]=ch.newV;
       if((ch.newV==="○"||ch.newV==="▲") && !it.date[name]) it.date[name]=todayStr();
+      markUpdated(it,name);
       n++;
     });
     added.push(name);
@@ -2293,6 +2324,7 @@ function applyImport(){
     it.vals[ch.name]=ch.newV;
     // 画面での操作と同じく、初めて○・▲が付いた時は日付を自動記録
     if((ch.newV==="○"||ch.newV==="▲") && !it.date[ch.name]) it.date[ch.name]=todayStr();
+    markUpdated(it,ch.name);
     n++;
   });
 
