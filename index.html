@@ -7,7 +7,7 @@
 <script type="module">
   // ===== Firebase 接続（初回セットアップ時にここだけ書き換えます）=====
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, onValue, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ↓↓↓ あなたの cardocgame プロジェクトの接続情報（設定済み）↓↓↓
@@ -116,7 +116,6 @@
       }
     }).catch(()=>{});
   };
-  window._fbReadyCheck = ()=>_fbReady;
 </script>
 <style>
   :root{
@@ -500,7 +499,7 @@
       <div class="spacer"></div>
       <div class="searchbox">
         <svg viewBox="0 0 20 20"><path d="M8 4a4 4 0 103.2 6.4l3.1 3.1 1.4-1.4-3.1-3.1A4 4 0 008 4zm0 2a2 2 0 110 4 2 2 0 010-4z"/></svg>
-        <input id="search" type="search" placeholder="項目を検索…" oninput="render()">
+        <input id="search" type="search" placeholder="項目を検索…" oninput="renderDebounced()">
       </div>
       <button class="btn" style="position:relative" onclick="openComments()" title="コメントが入っている箇所の一覧。クリックでその項目へ移動できます">🗨 コメント<span class="redbadge" id="cmtBadge" style="display:none"></span></button>
       <button class="btn" onclick="printAll()">印刷</button>
@@ -742,7 +741,7 @@ function syncJob(name, twoWay){
 }
 
 // 操作している人の名前（端末ごとに記憶）
-function getOperator(){ return localStorage.getItem('operatorName')||""; }
+function getOperator(){ try{ return localStorage.getItem('operatorName')||""; }catch(e){ return ""; } }
 
 // 変更履歴に1件追加（誰が・いつ・何をしたか）。
 // key を渡すと、直前の履歴が同じ key のときは新規追加せず「上書き」する。
@@ -799,6 +798,13 @@ function visibleNames(){
 }
 
 // ヘッダーの高さをCSS変数に反映（表エリアの貼り付け位置・高さ計算に使う）
+// 検索入力のたびに全再描画すると重いので、少し待ってからまとめて描画する
+let _renderTimer=null;
+function renderDebounced(){
+  if(_renderTimer) clearTimeout(_renderTimer);
+  _renderTimer=setTimeout(()=>{ _renderTimer=null; render(); },150);
+}
+
 function setHeaderVar(){
   const h=document.querySelector('header');
   if(h) document.documentElement.style.setProperty('--header-h', h.offsetHeight+"px");
@@ -918,11 +924,13 @@ function save(){
 }
 
 function stClass(v){return v==="○"?"st-ok":v==="▲"?"st-warn":v==="―"?"st-skip":v==="書"?"st-doc":"st-empty";}
-function cycle(id,name){const it=state.items.find(x=>x.id===id);const cur=it.vals[name]||"";const next=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];it.vals[name]=next;
+function cycle(id,name){const it=state.items.find(x=>x.id===id);
+  if(!it){ toast("この項目は削除されました"); render(); return; }
+  const cur=it.vals[name]||"";const next=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];it.vals[name]=next;
   // 日付は「○か▲を付けた日」。初めて○/▲になったら今日を記録し、
   // ○/▲以外（未実施・対象外・書類）に変わったら日付は不要なのでクリアする
   if(next==="○"||next==="▲"){ if(!it.date[name]) it.date[name]=todayStr(); }
-  else if(it.date[name]) it.date[name]="";
+  else if(next==="―" && it.date[name]) it.date[name]=""; // 対象外に戻した時だけ消す（書・未実施は日付を残す）
   // 同じマスを続けて切り替えている間は履歴を1件にまとめる。
   // 連続操作の「最初の値」を起点に、最終的な値だけを残す。
   const key="cell:"+id+":"+name;
@@ -949,8 +957,8 @@ function editDate(ev,id,name){ev.stopPropagation();closeAllPops();
   dp.classList.add('show');
   setTimeout(()=>{try{inp.showPicker&&inp.showPicker();}catch(e){}},50);
 }
-function applyDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);const v=document.getElementById('dpopInput').value||"";it.date[dpopTarget.name]=v;logChange(`${dpopTarget.name}／${it.item}：日付を${v||"クリア"}に`);}closeAllPops();save();render();}
-function clearDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);it.date[dpopTarget.name]="";logChange(`${dpopTarget.name}／${it.item}：日付をクリア`);}closeAllPops();save();render();}
+function applyDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);if(!it){closeAllPops();render();return;}const v=document.getElementById('dpopInput').value||"";it.date[dpopTarget.name]=v;logChange(`${dpopTarget.name}／${it.item}：日付を${v||"クリア"}に`);}closeAllPops();save();render();}
+function clearDate(){if(dpopTarget){const it=state.items.find(x=>x.id===dpopTarget.id);if(!it){closeAllPops();render();return;}it.date[dpopTarget.name]="";logChange(`${dpopTarget.name}／${it.item}：日付をクリア`);}closeAllPops();save();render();}
 let cpopTarget=null;
 function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   const author=getOperator();
@@ -995,6 +1003,7 @@ function deleteOthersMemo(author){
 function applyMemo(){
   if(cpopTarget){
     const it=state.items.find(x=>x.id===cpopTarget.id);
+    if(!it){ closeAllPops(); render(); return; }
     const author=getOperator()||"（名前未設定）";
     if(typeof it.memo[cpopTarget.name]!=="object"||it.memo[cpopTarget.name]===null){
       it.memo[cpopTarget.name]=memoMap(it,cpopTarget.name); // 旧文字列を担当者別に変換
@@ -1021,15 +1030,8 @@ function closeAllPops(){
   document.getElementById('dpop').classList.remove('show');
   document.getElementById('cpop').classList.remove('show');
   const sp=document.getElementById('spop'); if(sp) sp.classList.remove('show');
-  // 担当者の変更があれば、ポップを閉じたタイミングでまとめて保存・同期する
-  if(whoDirty){
-    whoDirty=false;
-    if(popTarget){
-      const it=state.items.find(x=>x.id===popTarget.id);
-      if(it) logChange(`${popTarget.name}／${it.item}：担当者を「${it.who[popTarget.name]||"なし"}」に`);
-    }
-    popBtnEl=null; save(); render();
-  }
+  // 担当者は whoChanged で即時保存済み。閉じたら表示だけ最新化する
+  if(whoDirty){ whoDirty=false; popBtnEl=null; render(); }
 }
 function setFilter(el){document.querySelectorAll('.pill[data-f]').forEach(p=>p.classList.remove('active'));el.classList.add('active');filter=el.dataset.f;render();}
 function whoIncludes(it,n,admin){ return ((it.who&&it.who[n])||"").split("・").includes(admin); }
@@ -1078,7 +1080,7 @@ function openWho(ev,id,name){
   let h=`<div class="pophead" style="padding:6px 13px 6px;flex-shrink:0">研修をやった人（複数選べます）</div>`;
   h+=`<div class="pop-list">`;
   state.admins.forEach(a=>{
-    h+=`<label class="pop-check"><input type="checkbox" value="${a.replace(/"/g,'&quot;')}" ${cur.includes(a)?"checked":""} onchange="whoChanged()"> ${a}</label>`;
+    h+=`<label class="pop-check"><input type="checkbox" value="${escA(a)}" ${cur.includes(a)?"checked":""} onchange="whoChanged()"> ${escI(a)}</label>`;
   });
   h+=`</div>`;
   h+=`<div class="pop-actions">`;
@@ -1140,9 +1142,12 @@ function whoChanged(){
   if(!popTarget)return;
   const checked=[...document.querySelectorAll('#pop input:checked')].map(i=>i.value);
   const it=state.items.find(x=>x.id===popTarget.id);
-  if(!it)return;
+  if(!it){ toast("この項目は削除されました"); closeAllPops(); render(); return; }
   it.who[popTarget.name]=checked.join("・");
-  whoDirty=true;
+  // その場で保存する（ポップを閉じるまで保存を遅らせると、他の人の更新が届いた
+  // タイミングで選択が消え、しかも「なし」という誤った履歴が残ってしまう）
+  logChange(`${popTarget.name}／${it.item}：担当者を「${it.who[popTarget.name]||"なし"}」に`,"who:"+popTarget.id+":"+popTarget.name);
+  save();
   // ポップは開いたまま、元のボタンの表示だけ更新する
   if(popBtnEl){
     const v=it.who[popTarget.name];
@@ -1196,8 +1201,8 @@ function render(){
     const p=progressFor(n);
     const job=(state.traineeJob||{})[n]||"";
     html+=`<th title="○ ${p.done}件／対象 ${p.total}項目">
-      <div class="name-th">${n}</div>
-      ${job?`<div class="name-job">${job}</div>`:""}
+      <div class="name-th">${escI(n)}</div>
+      ${job?`<div class="name-job">${escI(job)}</div>`:""}
       <div class="prog"><div class="progbar"><span style="width:${p.pct}%"></span></div><div class="progtxt">${p.pct}%</div></div></th>`;
   });
   html+="</tr></thead><tbody>";
@@ -1211,29 +1216,29 @@ function render(){
     if(collapsed){
       if(isNew){
         lastCat=it.cat;shown++;
-        html+=`<tr class="catstart collapsed-row" data-cat="${it.cat.replace(/"/g,'&quot;')}"><td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▶</span>${it.cat}</td>`;
-        html+=`<td class="col-item" style="cursor:pointer" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')">${catCounts[it.cat]}項目（クリックで展開）</td>`;
+        html+=`<tr class="catstart collapsed-row" data-cat="${escA(it.cat)}"><td class="col-cat catlabel" onclick="toggleCat(${escJ(it.cat)})"><span class="catarrow">▶</span>${escI(it.cat)}</td>`;
+        html+=`<td class="col-item" style="cursor:pointer" onclick="toggleCat(${escJ(it.cat)})">${catCounts[it.cat]}項目（クリックで展開）</td>`;
         names.forEach(()=>{html+=`<td class="stcell"></td>`;});
         html+=`</tr>`;
       }
       return;
     }
     shown++;
-    html+=`<tr class="${isNew?'catstart':''}" data-id="${it.id}"${isNew?` data-cat="${it.cat.replace(/"/g,'&quot;')}"`:''}>`;
-    if(isNew){html+=`<td class="col-cat catlabel" onclick="toggleCat('${it.cat.replace(/'/g,"\\'")}')"><span class="catarrow">▼</span>${it.cat}</td>`;lastCat=it.cat;}else{html+=`<td class="col-cat"></td>`;}
-    html+=`<td class="col-item"><span class="itemname">${it.item}</span></td>`;
+    html+=`<tr class="${isNew?'catstart':''}" data-id="${it.id}"${isNew?` data-cat="${escA(it.cat)}"`:''}>`;
+    if(isNew){html+=`<td class="col-cat catlabel" onclick="toggleCat(${escJ(it.cat)})"><span class="catarrow">▼</span>${escI(it.cat)}</td>`;lastCat=it.cat;}else{html+=`<td class="col-cat"></td>`;}
+    html+=`<td class="col-item"><span class="itemname">${escI(it.item)}</span></td>`;
     names.forEach(n=>{
       const v=it.vals[n]||"";const who=it.who[n]||"";const dt=it.date[n]||"";const memoOn=hasMemo(it,n);const memoTip=memoTooltip(it,n);
       const dtShort=dt?dt.replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):"";
       // 担当者絞込中：該当セルを強調、それ以外は薄く
       const whoCls=filterWho?(whoIncludes(it,n,filterWho)?" who-hit":" who-dim"):"";
       html+=`<td class="stcell"><div class="cellbox${whoCls}">
-        <button class="stbtn ${stClass(v)}" onclick="cycle(${it.id},'${n}')">${v||"·"}</button>
+        <button class="stbtn ${stClass(v)}" onclick="cycle(${it.id},${escJ(n)})">${v||"·"}</button>
         <div class="cellrow">
-          <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},'${n}')">${dtShort||"日付"}</button>
-          <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},'${n}')" title="${memoTip.replace(/"/g,'&quot;')}">${memoOn?"":"🗨"}</button>
+          <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},${escJ(n)})">${dtShort||"日付"}</button>
+          <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},${escJ(n)})" title="${escA(memoTip)}">${memoOn?"":"🗨"}</button>
         </div>
-        <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},'${n}')" title="${who.replace(/"/g,'&quot;')}">${who?who:""}</button>
+        <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},${escJ(n)})" title="${escA(who)}">${escI(who)}</button>
       </div></td>`;
     });
     html+="</tr>";
@@ -1245,6 +1250,7 @@ function render(){
   updateCmtBadge();
   renderWhoFilter();
   renderJobFilter();
+  setHeaderVar(); // 研修生の増減やボタンの折返しでヘッダー高さが変わるため測り直す
 }
 
 // 担当者絞込セレクトの中身を最新の担当者一覧で作り直す（選択は維持）
@@ -1253,7 +1259,7 @@ function renderWhoFilter(){
   if(!sel) return;
   const cur=filterWho;
   sel.innerHTML=`<option value="">👥 担当者で絞込</option>`+
-    state.admins.map(a=>`<option value="${a.replace(/"/g,'&quot;')}" ${a===cur?"selected":""}>👥 ${a} が教えた項目</option>`).join('');
+    state.admins.map(a=>`<option value="${escA(a)}" ${a===cur?"selected":""}>👥 ${escI(a)} が教えた項目</option>`).join('');
   sel.classList.toggle('on',!!cur);
 }
 // 職種絞込セレクト（選択は維持）
@@ -1262,7 +1268,7 @@ function renderJobFilter(){
   if(!sel) return;
   const cur=filterJob;
   sel.innerHTML=`<option value="">🏷 職種で絞込</option>`+
-    (state.jobTypes||[]).map(j=>`<option value="${j.name.replace(/"/g,'&quot;')}" ${j.name===cur?"selected":""}>🏷 ${j.name} のみ表示</option>`).join('');
+    (state.jobTypes||[]).map(j=>`<option value="${escA(j.name)}" ${j.name===cur?"selected":""}>🏷 ${escI(j.name)} のみ表示</option>`).join('');
   sel.classList.toggle('on',!!cur);
 }
 // ダッシュボードの「▲要フォロー」カード：クリックで絞込のON/OFF
@@ -1336,7 +1342,7 @@ function openTrainees(){renderTraineeList();openModal('modalTrainees');}
 // 職種の<option>群（追加行・各研修生の切替に共通で使う）
 function jobOptionsHtml(selected){
   return `<option value="">（職種なし）</option>`+
-    (state.jobTypes||[]).map(j=>`<option value="${j.name.replace(/"/g,'&quot;')}" ${j.name===selected?"selected":""}>${j.name}</option>`).join("");
+    (state.jobTypes||[]).map(j=>`<option value="${escA(j.name)}" ${j.name===selected?"selected":""}>${escI(j.name)}</option>`).join("");
 }
 function renderTraineeList(){
   const box=document.getElementById('traineeList');box.innerHTML="";
@@ -1412,7 +1418,7 @@ function openJobs(){
   const sel=document.getElementById('jobSelect');
   const prev=sel.value;
   renderJobList();
-  sel.innerHTML=(state.jobTypes||[]).map(j=>`<option value="${j.name.replace(/"/g,'&quot;')}">${j.name}</option>`).join("");
+  sel.innerHTML=(state.jobTypes||[]).map(j=>`<option value="${escA(j.name)}">${escI(j.name)}</option>`).join("");
   if(prev && jobByName(prev)) sel.value=prev;
   renderJobExcludes();
   openModal('modalJobs');
@@ -1535,7 +1541,7 @@ function renderItemEditor(){
         ondragover="onItemRowDragOver(event)" ondragleave="this.classList.remove('dragover')"
         ondrop="onItemDrop(event,${it.id})">
         <span class="drag-grip" title="ドラッグして移動（別のカテゴリへも動かせます）">⠿</span>
-        <input value="${it.item.replace(/"/g,'&quot;')}" onchange="renameItem(${it.id},this.value)">
+        <input value="${escA(it.item)}" onchange="renameItem(${it.id},this.value)">
         <button class="mini up" onclick="moveItem(${it.id},-1)" ${ri===0?'disabled style=opacity:.3':''}>↑</button>
         <button class="mini down" onclick="moveItem(${it.id},1)" ${ri===rows.length-1?'disabled style=opacity:.3':''}>↓</button>
         <button class="mini" onclick="delItem(${it.id})">削除</button></div>`;
@@ -1600,7 +1606,7 @@ function moveCat(cat,dir){
 }
 function delCat(cat){const cnt=state.items.filter(i=>i.cat===cat).length;if(!confirm(`カテゴリ「${cat}」と、その中の${cnt}項目をすべて削除しますか？`))return;state.items=state.items.filter(i=>i.cat!==cat);save();renderItemEditor();toast(`「${cat}」を削除しました`);}
 function addCat(){const inp=document.getElementById('newCat');const nm=(inp.value||"").trim();if(!nm)return;const it={id:_uid++,cat:nm,item:"新しい項目",vals:{},who:{},date:{},memo:{}};state.names.forEach(n=>{it.vals[n]="";it.who[n]="";it.date[n]="";it.memo[n]="";});state.items.push(it);inp.value="";save();renderItemEditor();toast(`カテゴリ「${nm}」を追加`);}
-function renameItem(id,v){v=(v||"").trim();if(!v)return;const it=state.items.find(x=>x.id===id);it.item=v;save();}
+function renameItem(id,v){v=(v||"").trim();if(!v)return;const it=state.items.find(x=>x.id===id);if(!it)return;const old=it.item;it.item=v;logChange(`項目「${old}」を「${v}」に改名`);save();}
 function moveItem(id,dir){
   const it=state.items.find(x=>x.id===id);
   // 同カテゴリ内の項目インデックス（state.items全体上の位置）を集める
@@ -1648,7 +1654,7 @@ function updateCmtBadge(){
 // 確認できるのは管理担当者（武藤・中嶋）のみ。
 function ackComments(){
   if(!canManageComments()){ toast("確認（バッジ消し）は武藤・中嶋のみ行えます"); return; }
-  localStorage.setItem('ackComments',JSON.stringify(commentSignatures()));
+  try{ localStorage.setItem('ackComments',JSON.stringify(commentSignatures())); }catch(e){}
   updateCmtBadge();
   openComments(); // 一覧の「新着」表示を更新
   toast("コメントを確認済みにしました（コメント自体は残っています）");
@@ -1726,7 +1732,7 @@ function openOperator(){
 function pickOperator(name){
   name=(name||"").trim();
   if(!name){ toast("名前を選ぶか入力してください"); return; }
-  localStorage.setItem('operatorName',name);
+  try{ localStorage.setItem('operatorName',name); }catch(e){}
   updateOpBtn();
   closeModal('modalOperator');
   toast(`操作者：${name} さんとして記録します`);
@@ -1770,7 +1776,15 @@ function importBackup(){
 }
 
 function toggleCat(cat){if(collapsedCats.has(cat))collapsedCats.delete(cat);else collapsedCats.add(cat);saveCollapsed();render();}
-function printAll(){collapsedCats.clear();render();setTimeout(()=>window.print(),100);}
+function printAll(){
+  // 印刷用に一時的に全展開し、印刷後に元の折りたたみ状態へ戻す
+  const keep=[...collapsedCats];
+  collapsedCats.clear(); render();
+  setTimeout(()=>{
+    window.print();
+    collapsedCats=new Set(keep); render();
+  },100);
+}
 function exportData(){const blob=new Blob([JSON.stringify(state,null,1)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="研修進捗_"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(url);toast("バックアップを書き出しました");}
 
 /* ---- Excel出力（紙の研修ファイルと同じA4縦チェック表形式） ---- */
@@ -1946,8 +1960,14 @@ function addProgressSheet(wb, sheetName, names, opts){
 let pendingImport=null;
 let pendingImportNew=null; // Excelにだけ居る新しい研修生 {名前: {col, changes:[{id,newV}], invalid}}
 
-// 取り込んだ文字列をHTMLに安全に埋め込むための最小エスケープ
-function escI(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+// 文字列をHTMLに安全に埋め込むためのエスケープ。
+// 研修生名・項目名・コメント等はDB経由で全端末に共有されるため、
+// 表示・属性・属性内JS引数のすべてでエスケープを通す。
+function escI(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+// 属性値用（escIと同じ。意図を明示するための別名）
+const escA=escI;
+// onclick="fn(${escJ(name)})" のように、属性内のJS文字列リテラルとして安全に埋め込む
+function escJ(s){return escI(JSON.stringify(String(s??"")));}
 
 // 手書き・手入力の揺れを吸収して正規の記号に直す。判別できない場合は null
 function normSym(s){
@@ -2004,10 +2024,51 @@ function importCellText(ws,r,c){
   return t.trim();
 }
 
+// Excelの全シートを解析して差分を統合する。
+// （Excel出力は「全員」シートに加えて職種ごとのシートも作るため、
+//   店舗が職種シートに記入して返してきても取り込めるようにする）
 function analyzeImport(wb){
-  const ws=wb.worksheets[0];
-  if(!ws){ toast('シートが見つかりません'); return; }
+  const sheets=wb.worksheets||[];
+  if(!sheets.length){ toast('シートが見つかりません'); return; }
 
+  const allChanges=[], allSkipped=[], allNew={}, matchedNames=new Set();
+  const seen=new Set(); // 同じ研修生×項目の重複（複数シートに同じ人がいる）を除く
+  let anyHead=false;
+
+  sheets.forEach(ws=>{
+    const res=analyzeSheet(ws);
+    if(!res) return;
+    anyHead=true;
+    res.changes.forEach(ch=>{
+      const k=ch.id+"::"+ch.name;
+      if(seen.has(k)) return;
+      seen.add(k); allChanges.push(ch);
+    });
+    res.skipped.forEach(x=>{ if(!allSkipped.includes(x)) allSkipped.push(x); });
+    Object.keys(res.nameCols).forEach(n=>matchedNames.add(n));
+    // 新しい研修生は最初に見つけたシートの情報を採用する
+    Object.entries(res.newNameCols).forEach(([n,info])=>{ if(!allNew[n]) allNew[n]=info; });
+  });
+
+  if(!anyHead){
+    toast('見出し行が見つかりません。「Excel出力」で作ったファイルをご利用ください。');
+    return;
+  }
+
+  const hasNew=Object.keys(allNew).length>0;
+  if(!allChanges.length && !hasNew){
+    toast(allSkipped.length
+      ? '反映できる違いはありませんでした（照合できない行あり）'
+      : 'ネット上のデータとの違いはありませんでした');
+    return;
+  }
+  pendingImport=allChanges;
+  pendingImportNew=hasNew?allNew:null;
+  renderImportModal(allChanges,allSkipped,[...matchedNames],allNew);
+}
+
+// 1シートを解析して {changes, skipped, nameCols, newNameCols} を返す（見出しが無ければ null）
+function analyzeSheet(ws){
   // 見出し行を探す：「内容」列があり、現在の研修生名が1人以上見つかる行
   let headRow=0,itemCol=0,catCol=1;
   const nameCols={};
@@ -2019,16 +2080,14 @@ function analyzeImport(wb){
       // 見出しが横に結合されていると全セルが同じ値を返すため、最初の列を採用する
       if(t==="内容" && !ic) ic=c;
       if(t==="項目" && !cc) cc=c;
-      state.names.forEach(n=>{ if(!(n in nc) && t===normTitle(n)) nc[n]=c; });
+      // 修了した研修生の列は取り込み対象にしない（記録を保持するため）
+      activeNames().forEach(n=>{ if(!(n in nc) && t===normTitle(n)) nc[n]=c; });
     }
     if(ic && Object.keys(nc).length){
       headRow=r; itemCol=ic; catCol=cc||1; Object.assign(nameCols,nc); break;
     }
   }
-  if(!headRow){
-    toast('見出し行が見つかりません。「Excel出力」で作ったファイルをご利用ください。');
-    return;
-  }
+  if(!headRow) return null; // このシートは進捗表ではない
 
   // 見出し行にいる「現在のシステムに居ない名前」＝新しい研修生の候補
   const IGNORE_HEADS=["項目","内容","管理者確認","氏名","備考","メモ","担当","担当者","日付","達成率","№","no","番号"];
@@ -2077,16 +2136,7 @@ function analyzeImport(wb){
     });
   }
 
-  const hasNew=Object.keys(newNameCols).length>0;
-  if(!changes.length && !hasNew){
-    toast(skipped.length
-      ? '反映できる違いはありませんでした（照合できない行あり）'
-      : 'ネット上のデータとの違いはありませんでした');
-    return;
-  }
-  pendingImport=changes;
-  pendingImportNew=hasNew?newNameCols:null;
-  renderImportModal(changes,skipped,Object.keys(nameCols),newNameCols);
+  return { changes, skipped, nameCols, newNameCols };
 }
 
 function importChipHtml(v){
@@ -2148,7 +2198,9 @@ function applyImport(){
     const info=pendingImportNew[name];
     if(!info || state.names.includes(name)) return;
     state.names.push(name);
-    state.items.forEach(it=>{ it.vals[name]=""; it.who[name]=""; it.date[name]=""; it.memo[name]=""; });
+    state.items.forEach(it=>{ it.vals[name]=""; it.who[name]=""; it.date[name]=""; it.memo[name]={}; });
+    state.traineeJob=state.traineeJob||{};
+    if(!(name in state.traineeJob)) state.traineeJob[name]=""; // 職種は「研修生を管理」から後で設定
     info.changes.forEach(ch=>{
       const it=state.items.find(x=>x.id===ch.id);
       if(!it) return;
