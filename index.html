@@ -7,7 +7,7 @@
 <script type="module">
   // ===== Firebase 接続（初回セットアップ時にここだけ書き換えます）=====
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getDatabase, ref, onValue, set, get, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ↓↓↓ あなたの cardocgame プロジェクトの接続情報（設定済み）↓↓↓
@@ -96,13 +96,27 @@
     if(_auth) signOut(_auth);
   };
 
-  // ローカルの変更を保存（触るたびに呼ばれる）
+  // ローカルの変更を保存（全体を置き換える。項目の増減など構造が変わった時に使う）
   window.fbSave = function(stateObj){
     if(!_fbReady || !_dbConnected || _applyingRemote) return;
     set(_dbRef, stateObj).then(()=>{
       window.fbStatus && window.fbStatus("saved");
     }).catch((err)=>{
       console.error("DB write error:", err);
+      window.fbStatus && window.fbStatus("error", err.code||"保存エラー");
+    });
+  };
+
+  // 変更された箇所だけを保存する。
+  // 全体を set で上書きすると、2人が同時に別のセルを触った時に
+  // 後から保存した人が相手の変更を消してしまうため、通常はこちらを使う。
+  window.fbUpdate = function(patch){
+    if(!_fbReady || !_dbConnected || _applyingRemote) return;
+    if(!patch || !Object.keys(patch).length) return;
+    update(_dbRef, patch).then(()=>{
+      window.fbStatus && window.fbStatus("saved");
+    }).catch((err)=>{
+      console.error("DB update error:", err);
       window.fbStatus && window.fbStatus("error", err.code||"保存エラー");
     });
   };
@@ -903,6 +917,9 @@ window.applyRemoteState = function(remote){
       else if(typeof it.memo[n]==="string") it.memo[n]=it.memo[n].trim()?{"（以前の記録）":it.memo[n]}:{};
     });
   });
+  // サーバの内容を受け取った時点が「サーバと一致している状態」。
+  // 次の保存はここからの差分だけを書き込む。
+  _serverSnapshot=snapshotNow();
   render();
   // DB上に古いadminが残っていたら、一度だけ保存して完全に削除する。
   // （fbSave側が_applyingRemote中の保存を無視するので、次のフレームで呼ぶ）
@@ -918,9 +935,65 @@ window.fbStatus = function(kind, msg){
   else if(kind==="error"){ el.textContent="🔴 未接続"; el.className="sync err"; el.title=msg||""; }
 };
 
+/* ===== 保存（同時編集でも相手の変更を消さないよう、差分だけを書き込む） =====
+   以前は保存のたびに全データを set で上書きしていたため、2人が同時に別のセルを
+   触ると、後から保存した人が相手の変更を丸ごと消してしまっていた。
+   そこで「最後にサーバと一致していた状態」を控えておき、変わった箇所だけを
+   update で書き込む。項目やカテゴリの増減など構造が変わった時だけ全体を書く。 */
+let _serverSnapshot = null; // サーバと一致していた最後の状態（比較用のコピー）
+
+function snapshotNow(){ return JSON.parse(JSON.stringify(serializeState())); }
+
+// 構造が変わったか（配列の並び・件数が変わると差分パスが対応しなくなるため全体保存に切り替える）
+function structurallyChanged(a,b){
+  if(!a||!b) return true;
+  if(!Array.isArray(a.items)||!Array.isArray(b.items)) return true;
+  if(a.items.length!==b.items.length) return true;
+  for(let i=0;i<a.items.length;i++){
+    if(!a.items[i]||!b.items[i]||a.items[i].id!==b.items[i].id) return true;
+  }
+  const same=(x,y)=>JSON.stringify(x||[])===JSON.stringify(y||[]);
+  if(!same(a.names,b.names)) return true;
+  if(!same(a.admins,b.admins)) return true;
+  if(!same(a.archived,b.archived)) return true;
+  if(!same(a.jobTypes,b.jobTypes)) return true;
+  if((a.log||[]).length>(b.log||[]).length) return true; // 履歴が縮んだ＝古い分を切り捨てた
+  return false;
+}
+
+// 変わった末端の値だけを {"items/3/vals/満間":"○"} の形に集める
+function diffLeaves(oldV,newV,path,out){
+  if(oldV===newV) return;
+  const isObj=v=>v!==null&&typeof v==="object";
+  if(isObj(oldV)&&isObj(newV)&&Array.isArray(oldV)===Array.isArray(newV)){
+    const keys=new Set([...Object.keys(oldV),...Object.keys(newV)]);
+    keys.forEach(k=>diffLeaves(oldV[k],newV[k],path?path+"/"+k:k,out));
+    return;
+  }
+  // 中身が空のオブジェクトはFirebase上では存在しないのと同じなので、無駄な書き込みを避ける
+  if(isObj(newV)&&!Array.isArray(newV)&&Object.keys(newV).length===0){
+    if(oldV===undefined) return;
+    out[path]=null;
+    return;
+  }
+  out[path]=(newV===undefined?null:newV);
+}
+
 // 変更を保存する共通関数（各操作の最後に呼ぶ）
 function save(){
-  if(window.fbSave) window.fbSave(serializeState());
+  const now=snapshotNow();
+  // 構造が変わった時、または比較元が無い時は全体を保存する
+  if(!_serverSnapshot || structurallyChanged(_serverSnapshot,now)){
+    _serverSnapshot=now;
+    if(window.fbSave) window.fbSave(now);
+    return;
+  }
+  const patch={};
+  diffLeaves(_serverSnapshot,now,"",patch);
+  if(!Object.keys(patch).length) return; // 実質変更なし
+  _serverSnapshot=now;
+  if(window.fbUpdate) window.fbUpdate(patch);
+  else if(window.fbSave) window.fbSave(now);
 }
 
 function stClass(v){return v==="○"?"st-ok":v==="▲"?"st-warn":v==="―"?"st-skip":v==="書"?"st-doc":"st-empty";}
