@@ -97,12 +97,16 @@
   };
 
   // ローカルの変更を保存（全体を置き換える。項目の増減など構造が変わった時に使う）
-  window.fbSave = function(stateObj){
-    if(!_fbReady || !_dbConnected || _applyingRemote) return;
+  // 保存できなかった時は onNg を呼ぶ。呼び出し側はここで比較元を巻き戻し、
+  // 「画面には反映されたのに保存されていない」状態を残さないようにする。
+  window.fbSave = function(stateObj, onOk, onNg){
+    if(!_fbReady || !_dbConnected || _applyingRemote){ onNg && onNg(); return; }
     set(_dbRef, stateObj).then(()=>{
+      onOk && onOk();
       window.fbStatus && window.fbStatus("saved");
     }).catch((err)=>{
       console.error("DB write error:", err);
+      onNg && onNg();
       window.fbStatus && window.fbStatus("error", err.code||"保存エラー");
     });
   };
@@ -110,13 +114,15 @@
   // 変更された箇所だけを保存する。
   // 全体を set で上書きすると、2人が同時に別のセルを触った時に
   // 後から保存した人が相手の変更を消してしまうため、通常はこちらを使う。
-  window.fbUpdate = function(patch){
-    if(!_fbReady || !_dbConnected || _applyingRemote) return;
-    if(!patch || !Object.keys(patch).length) return;
+  window.fbUpdate = function(patch, onOk, onNg){
+    if(!_fbReady || !_dbConnected || _applyingRemote){ onNg && onNg(); return; }
+    if(!patch || !Object.keys(patch).length){ onOk && onOk(); return; }
     update(_dbRef, patch).then(()=>{
+      onOk && onOk();
       window.fbStatus && window.fbStatus("saved");
     }).catch((err)=>{
       console.error("DB update error:", err);
+      onNg && onNg();
       window.fbStatus && window.fbStatus("error", err.code||"保存エラー");
     });
   };
@@ -779,6 +785,7 @@ function syncJob(name, twoWay){
       if(cur===""||cur==="―"){ it.vals[name]="―"; it.date[name]=""; }
     }else if(twoWay && cur==="―"){
       it.vals[name]="";
+      if(it.upd) delete it.upd[name]; // 空欄に戻したセルはNew!の対象外
     }
   });
 }
@@ -876,6 +883,9 @@ function setHeaderVar(){
   const h=document.querySelector('header');
   if(h) document.documentElement.style.setProperty('--header-h', h.offsetHeight+"px");
 }
+// New!の表示は描画時に判定しているため、開きっぱなしだと期限切れが残る。
+// 10分ごとに描き直して自動的に消えるようにする。
+setInterval(()=>{ if(document.getElementById('app').style.display!=='none') render(); }, 600000);
 window.addEventListener('resize', setHeaderVar);
 window.addEventListener('DOMContentLoaded', setHeaderVar);
 
@@ -940,8 +950,10 @@ window.addEventListener('DOMContentLoaded',()=>{
 
 // state を保存用のプレーンなオブジェクトに変換
 function serializeState(){
+  // _from は連続操作をまとめるための一時情報なので保存しない
+  const log=(state.log||[]).map(e=>{ const o=Object.assign({},e); delete o._from; return o; });
   return { names: state.names, admins: state.admins, items: state.items,
-    archived: state.archived||[], log: state.log||[],
+    archived: state.archived||[], log,
     jobTypes: state.jobTypes||[], traineeJob: state.traineeJob||{}, _updated: Date.now() };
 }
 window.serializeState = serializeState;
@@ -1006,10 +1018,14 @@ function structurallyChanged(a,b){
     if(!a.items[i]||!b.items[i]||a.items[i].id!==b.items[i].id) return true;
   }
   const same=(x,y)=>JSON.stringify(x||[])===JSON.stringify(y||[]);
+  // 名前はデータのキーになるので、中身が変わったら全体保存にする
   if(!same(a.names,b.names)) return true;
-  if(!same(a.admins,b.admins)) return true;
-  if(!same(a.archived,b.archived)) return true;
-  if(!same(a.jobTypes,b.jobTypes)) return true;
+  // 以下は件数だけ見る。中身の変更は差分保存で正しく送れるため、
+  // 全体上書きにすると同時編集で相手の変更を消してしまう
+  const sameLen=(x,y)=>(x||[]).length===(y||[]).length;
+  if(!sameLen(a.admins,b.admins)) return true;
+  if(!sameLen(a.archived,b.archived)) return true;
+  if(!sameLen(a.jobTypes,b.jobTypes)) return true;
   if((a.log||[]).length>(b.log||[]).length) return true; // 履歴が縮んだ＝古い分を切り捨てた
   return false;
 }
@@ -1035,18 +1051,40 @@ function diffLeaves(oldV,newV,path,out){
 // 変更を保存する共通関数（各操作の最後に呼ぶ）
 function save(){
   const now=snapshotNow();
+  const prev=_serverSnapshot;
   // 構造が変わった時、または比較元が無い時は全体を保存する
-  if(!_serverSnapshot || structurallyChanged(_serverSnapshot,now)){
+  if(!prev || structurallyChanged(prev,now)){
     _serverSnapshot=now;
-    if(window.fbSave) window.fbSave(now);
+    // 保存できなかったら比較元を戻す（次の操作でまとめて送り直せるように）
+    if(window.fbSave) window.fbSave(now,null,()=>{ _serverSnapshot=prev; });
     return;
   }
+
+  // 履歴(log)は配列で、300件を超えると先頭を切り捨てて全要素がずれる。
+  // そのまま差分を取ると毎回1000件以上のパスを送ることになるので、
+  // 履歴だけ切り離して「増えた分」または「まるごと置換」で送る。
+  const oL=prev.log||[], nL=now.log||[];
+  const a=Object.assign({},prev,{log:[]}), b=Object.assign({},now,{log:[]});
   const patch={};
-  diffLeaves(_serverSnapshot,now,"",patch);
+  diffLeaves(a,b,"",patch);
+
+  const shifted = oL.length>nL.length
+    || JSON.stringify(oL[0]||null)!==JSON.stringify(nL[0]||null);
+  if(shifted){
+    if(oL.length||nL.length) patch["log"]=nL;
+  }else{
+    // 末尾に追加された分
+    for(let i=oL.length;i<nL.length;i++) patch["log/"+i]=nL[i];
+    // 直前の履歴がまとめ更新された場合（同じマスの連続操作）
+    if(oL.length && JSON.stringify(oL[oL.length-1])!==JSON.stringify(nL[oL.length-1])){
+      patch["log/"+(oL.length-1)]=nL[oL.length-1];
+    }
+  }
+
   if(!Object.keys(patch).length) return; // 実質変更なし
   _serverSnapshot=now;
-  if(window.fbUpdate) window.fbUpdate(patch);
-  else if(window.fbSave) window.fbSave(now);
+  if(window.fbUpdate) window.fbUpdate(patch,null,()=>{ _serverSnapshot=prev; });
+  else if(window.fbSave) window.fbSave(now,null,()=>{ _serverSnapshot=prev; });
 }
 
 function stClass(v){return v==="○"?"st-ok":v==="▲"?"st-warn":v==="―"?"st-skip":v==="書"?"st-doc":"st-empty";}
@@ -1092,8 +1130,9 @@ let cpopTarget=null;
 function editMemo(ev,id,name){ev.stopPropagation();closeAllPops();
   const author=getOperator();
   if(!author){ toast("先に右上の👤で自分の名前を選んでください"); openOperator(); return; }
-  cpopTarget={id,name};
   const it=state.items.find(x=>x.id===id);
+  if(!it){ toast("この項目は削除されました"); render(); return; }
+  cpopTarget={id,name};
   document.getElementById('cpopHead').textContent=name+"／"+it.item;
   refreshCpopOthers();
   document.getElementById('cpopMineLabel').textContent=`あなた（${author}）のコメント`;
@@ -1114,7 +1153,7 @@ function refreshCpopOthers(){
   const canDel=canManageComments();
   const box=document.getElementById('cpopOthers');
   box.innerHTML=others.length
-    ? others.map(o=>`<div class="cmt-other"><span class="cmt-other-au">${escI(o.author)}${o.date?`<span class="cmt-date">${fmtMemoDate(o.date)}</span>`:""}${canDel?` <button class="cmt-del" onclick="deleteOthersMemo('${o.author.replace(/'/g,"\\'")}')">✕削除</button>`:""}</span>${escI(o.text)}</div>`).join("")
+    ? others.map(o=>`<div class="cmt-other"><span class="cmt-other-au">${escI(o.author)}${o.date?`<span class="cmt-date">${fmtMemoDate(o.date)}</span>`:""}${canDel?` <button class="cmt-del" onclick="deleteOthersMemo(${escJ(o.author)})">✕削除</button>`:""}</span>${escI(o.text)}</div>`).join("")
     : "";
   box.style.display=others.length?"block":"none";
 }
@@ -1148,6 +1187,7 @@ function applyMemo(){
 function clearMemo(){
   if(cpopTarget){
     const it=state.items.find(x=>x.id===cpopTarget.id);
+    if(!it){ closeAllPops(); render(); return; }
     const author=getOperator()||"（名前未設定）";
     if(typeof it.memo[cpopTarget.name]==="object"&&it.memo[cpopTarget.name]) delete it.memo[cpopTarget.name][author];
     else it.memo[cpopTarget.name]={};
@@ -1279,6 +1319,7 @@ function whoChanged(){
   // その場で保存する（ポップを閉じるまで保存を遅らせると、他の人の更新が届いた
   // タイミングで選択が消え、しかも「なし」という誤った履歴が残ってしまう）
   logChange(`${popTarget.name}／${it.item}：担当者を「${it.who[popTarget.name]||"なし"}」に`,"who:"+popTarget.id+":"+popTarget.name);
+  whoDirty=true;   // ポップを閉じた時に表を描き直すための印
   save();
   // ポップは開いたまま、元のボタンの表示だけ更新する
   if(popBtnEl){
@@ -1428,7 +1469,7 @@ function renderCatNav(){
   if(!nav) return;
   const cats=[...new Set(state.items.map(i=>i.cat))];
   nav.innerHTML='<div class="catnav-h">カテゴリ（クリックで移動）</div>'+cats.map(c=>
-    `<button class="catnav-btn ${collapsedCats.has(c)?'closed':''}" onclick="jumpToCat('${c.replace(/'/g,"\\'")}')" title="${c.replace(/"/g,'&quot;')}">${c}</button>`
+    `<button class="catnav-btn ${collapsedCats.has(c)?'closed':''}" onclick="jumpToCat(${escJ(c)})" title="${escA(c)}">${escI(c)}</button>`
   ).join('');
 }
 
@@ -1486,11 +1527,11 @@ function renderTraineeList(){
     if(arch.includes(n)) return; // 修了者は下の別枠に表示
     const job=(state.traineeJob||{})[n]||"";
     box.innerHTML+=`<div class="listrow">
-      <span class="name">${n}</span>
-      <select class="job-select" onchange="changeTraineeJob('${n.replace(/'/g,"\\'")}',this.value)">${jobOptionsHtml(job)}</select>
+      <span class="name">${escI(n)}</span>
+      <select class="job-select" onchange="changeTraineeJob(${escJ(n)},this.value)">${jobOptionsHtml(job)}</select>
       <button class="mini up" onclick="moveTrainee(${i},-1)" ${i===0?'disabled style=opacity:.3':''}>↑</button>
       <button class="mini down" onclick="moveTrainee(${i},1)" ${i===state.names.length-1?'disabled style=opacity:.3':''}>↓</button>
-      <button class="mini" style="color:#1f7a44" onclick="archiveTrainee('${n.replace(/'/g,"\\'")}')">修了</button>
+      <button class="mini" style="color:#1f7a44" onclick="archiveTrainee(${escJ(n)})">修了</button>
     </div>`;
   });
   // 修了した研修生（記録は残っている。戻す／完全削除ができる）
@@ -1499,9 +1540,9 @@ function renderTraineeList(){
     box.innerHTML+=`<div class="subhead" style="margin-top:16px">🎓 修了した研修生（表・Excelには出ません。記録は残っています）</div>`;
     archived.forEach(n=>{
       box.innerHTML+=`<div class="listrow archived">
-        <span class="name">${n}</span>
-        <button class="mini up" onclick="unarchiveTrainee('${n.replace(/'/g,"\\'")}')" style="color:#0f5e8c">表に戻す</button>
-        <button class="mini" onclick="delTrainee('${n.replace(/'/g,"\\'")}')">完全に削除</button>
+        <span class="name">${escI(n)}</span>
+        <button class="mini up" onclick="unarchiveTrainee(${escJ(n)})" style="color:#0f5e8c">表に戻す</button>
+        <button class="mini" onclick="delTrainee(${escJ(n)})">完全に削除</button>
       </div>`;
     });
   }
@@ -1527,7 +1568,7 @@ function addTrainee(){
     if((state.archived||[]).includes(nm)){ unarchiveTrainee(nm); inp.value=""; return; }
     toast("同じ名前があります");return;
   }
-  state.names.push(nm);state.items.forEach(it=>{it.vals[nm]="";it.who[nm]="";it.date[nm]="";it.memo[nm]="";});
+  state.names.push(nm);state.items.forEach(it=>{it.vals[nm]="";it.who[nm]="";it.date[nm]="";it.memo[nm]={};if(it.upd)delete it.upd[nm];});
   // 選んだ職種を記録し、その職種で対象外の項目に自動で―を入れる
   const jobSel=document.getElementById('newTraineeJob');
   const job=jobSel?jobSel.value:"";
@@ -1545,7 +1586,7 @@ function changeTraineeJob(name,job){
   logChange(`研修生「${name}」の職種を「${job||"なし"}」に`);
   save();renderTraineeList();
 }
-function delTrainee(n){if(!confirm(`「${n}」の記録をすべて削除しますか？\nこの操作は元に戻せません（修了にして隠すだけなら「修了」を使ってください）。`))return;state.names=state.names.filter(x=>x!==n);state.archived=(state.archived||[]).filter(x=>x!==n);if(state.traineeJob)delete state.traineeJob[n];state.items.forEach(it=>{delete it.vals[n];delete it.who[n];delete it.date[n];delete it.memo[n];});logChange(`研修生「${n}」を完全に削除`);save();renderTraineeList();toast(`「${n}」を削除しました`);}
+function delTrainee(n){if(!confirm(`「${n}」の記録をすべて削除しますか？\nこの操作は元に戻せません（修了にして隠すだけなら「修了」を使ってください）。`))return;state.names=state.names.filter(x=>x!==n);state.archived=(state.archived||[]).filter(x=>x!==n);if(state.traineeJob)delete state.traineeJob[n];state.items.forEach(it=>{delete it.vals[n];delete it.who[n];delete it.date[n];delete it.memo[n];if(it.upd)delete it.upd[n];});logChange(`研修生「${n}」を完全に削除`);save();renderTraineeList();toast(`「${n}」を削除しました`);}
 
 /* ---- 職種ごとの対象外(―)設定 ---- */
 function openJobs(){
@@ -1560,9 +1601,9 @@ function openJobs(){
 function renderJobList(){
   const box=document.getElementById('jobList');
   box.innerHTML=(state.jobTypes||[]).map((j,i)=>`<div class="listrow">
-    <input class="name" value="${j.name.replace(/"/g,'&quot;')}" style="border:none;background:transparent;font-weight:600;outline:none" onchange="renameJob('${j.name.replace(/'/g,"\\'")}',this.value)">
+    <input class="name" value="${escA(j.name)}" style="border:none;background:transparent;font-weight:600;outline:none" onchange="renameJob(${escJ(j.name)},this.value)">
     <span class="tsub" style="color:#9aa7b3;font-size:12px">対象外 ${(j.exclude||[]).length}件</span>
-    <button class="mini" onclick="delJob('${j.name.replace(/'/g,"\\'")}')">削除</button>
+    <button class="mini" onclick="delJob(${escJ(j.name)})">削除</button>
   </div>`).join("");
 }
 function addJob(){
@@ -1603,8 +1644,8 @@ function renderJobExcludes(){
     const items=rows.map(it=>`<label class="job-item"><input type="checkbox" ${exSet.has(it.id)?"checked":""} onchange="toggleJobExclude(${it.id},this.checked)"> ${escI(it.item)}</label>`).join("");
     return `<div class="jobcat"><div class="jobcat-h">
       <b>${escI(cat)}</b>
-      <button class="mini" onclick="toggleJobCat('${cat.replace(/'/g,"\\'")}',true)">全て対象外</button>
-      <button class="mini" onclick="toggleJobCat('${cat.replace(/'/g,"\\'")}',false)">全て解除</button>
+      <button class="mini" onclick="toggleJobCat(${escJ(cat)},true)">全て対象外</button>
+      <button class="mini" onclick="toggleJobCat(${escJ(cat)},false)">全て解除</button>
       <span style="color:#9aa7b3;font-size:11px">対象外 ${catCount}/${rows.length}</span>
     </div>${items}</div>`;
   }).join("");
@@ -1645,10 +1686,10 @@ function openAdmins(){renderAdminList();openModal('modalAdmins');}
 function renderAdminList(){
   const box=document.getElementById('adminList');box.innerHTML="";
   state.admins.forEach((a,i)=>{
-    box.innerHTML+=`<div class="listrow"><span class="name">${a}</span>
+    box.innerHTML+=`<div class="listrow"><span class="name">${escI(a)}</span>
       <button class="mini up" onclick="moveAdmin(${i},-1)" ${i===0?'disabled style=opacity:.3':''}>↑</button>
       <button class="mini down" onclick="moveAdmin(${i},1)" ${i===state.admins.length-1?'disabled style=opacity:.3':''}>↓</button>
-      <button class="mini" onclick="delAdmin('${a.replace(/'/g,"\\'")}')">削除</button></div>`;
+      <button class="mini" onclick="delAdmin(${escJ(a)})">削除</button></div>`;
   });
 }
 function addAdmin(){const inp=document.getElementById('newAdmin');const nm=(inp.value||"").trim();if(!nm)return;if(hasBadKeyChars(nm)){toast("名前に . # $ [ ] / は使えません");return;}if(state.admins.includes(nm)){toast("同じ担当者がいます");return;}state.admins.push(nm);inp.value="";save();renderAdminList();toast(`担当者「${nm}」を追加`);}
@@ -1661,14 +1702,15 @@ function renderItemEditor(){
   const cats=[...new Set(state.items.map(i=>i.cat))];
   cats.forEach((cat,ci)=>{
     const rows=state.items.filter(i=>i.cat===cat);
-    const catQ=cat.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    // ondrop の引数用（JSON文字列リテラルとして安全に埋め込む）
+    const catQ=escJ(cat);
     let inner=`<div class="catgroup"><div class="catgroup-h">
       <span class="drag-grip" style="cursor:default">🗂</span>
-      <input value="${cat.replace(/"/g,'&quot;')}" onchange="renameCat('${cat.replace(/'/g,"\\'")}',this.value)">
-      <button class="mini up" onclick="moveCat('${cat.replace(/'/g,"\\'")}',-1)" ${ci===0?'disabled style=opacity:.3':''} title="カテゴリを上へ">↑</button>
-      <button class="mini down" onclick="moveCat('${cat.replace(/'/g,"\\'")}',1)" ${ci===cats.length-1?'disabled style=opacity:.3':''} title="カテゴリを下へ">↓</button>
-      <button class="mini" onclick="delCat('${cat.replace(/'/g,"\\'")}')">カテゴリ削除</button></div>
-      <div class="catgroup-b" ondragover="onItemDragOver(event)" ondrop="onItemDropCat(event,'${catQ}')" ondragleave="this.classList.remove('dragover')">`;
+      <input value="${escA(cat)}" onchange="renameCat(${escJ(cat)},this.value)">
+      <button class="mini up" onclick="moveCat(${escJ(cat)},-1)" ${ci===0?'disabled style=opacity:.3':''} title="カテゴリを上へ">↑</button>
+      <button class="mini down" onclick="moveCat(${escJ(cat)},1)" ${ci===cats.length-1?'disabled style=opacity:.3':''} title="カテゴリを下へ">↓</button>
+      <button class="mini" onclick="delCat(${escJ(cat)})">カテゴリ削除</button></div>
+      <div class="catgroup-b" ondragover="onItemDragOver(event)" ondrop="onItemDropCat(event,${catQ})" ondragleave="this.classList.remove('dragover')">`;
     rows.forEach((it,ri)=>{
       inner+=`<div class="itemrow" draggable="true" data-itemid="${it.id}"
         ondragstart="onItemDragStart(event,${it.id})" ondragend="onItemDragEnd(event)"
@@ -1680,7 +1722,7 @@ function renderItemEditor(){
         <button class="mini down" onclick="moveItem(${it.id},1)" ${ri===rows.length-1?'disabled style=opacity:.3':''}>↓</button>
         <button class="mini" onclick="delItem(${it.id})">削除</button></div>`;
     });
-    inner+=`<div class="addrow"><input placeholder="このカテゴリに項目を追加" onkeydown="if(event.key==='Enter'){addItem('${cat.replace(/'/g,"\\'")}',this.value);this.value=''}"></div>`;
+    inner+=`<div class="addrow"><input placeholder="このカテゴリに項目を追加" onkeydown="if(event.key==='Enter'){addItem(${escJ(cat)},this.value);this.value=''}"></div>`;
     inner+=`</div></div>`;
     box.innerHTML+=inner;
   });
@@ -1743,6 +1785,7 @@ function addCat(){const inp=document.getElementById('newCat');const nm=(inp.valu
 function renameItem(id,v){v=(v||"").trim();if(!v)return;const it=state.items.find(x=>x.id===id);if(!it)return;const old=it.item;it.item=v;logChange(`項目「${old}」を「${v}」に改名`);save();}
 function moveItem(id,dir){
   const it=state.items.find(x=>x.id===id);
+  if(!it) return;
   // 同カテゴリ内の項目インデックス（state.items全体上の位置）を集める
   const idxs=state.items.map((x,i)=>x.cat===it.cat?i:-1).filter(i=>i>=0);
   const pos=idxs.indexOf(state.items.indexOf(it));
@@ -1752,7 +1795,7 @@ function moveItem(id,dir){
   [state.items[a],state.items[b]]=[state.items[b],state.items[a]];
   save();renderItemEditor();
 }
-function delItem(id){const it=state.items.find(x=>x.id===id);if(!confirm(`「${it.item}」を削除しますか？`))return;state.items=state.items.filter(x=>x.id!==id);save();renderItemEditor();}
+function delItem(id){const it=state.items.find(x=>x.id===id);if(!it)return;if(!confirm(`「${it.item}」を削除しますか？`))return;state.items=state.items.filter(x=>x.id!==id);save();renderItemEditor();}
 function addItem(cat,v){v=(v||"").trim();if(!v)return;const it={id:_uid++,cat:cat,item:v,vals:{},who:{},date:{},memo:{}};state.names.forEach(n=>{it.vals[n]="";it.who[n]="";it.date[n]="";it.memo[n]="";});
   // insert right after last item of that cat
   let idx=-1;state.items.forEach((x,i)=>{if(x.cat===cat)idx=i;});
@@ -1859,7 +1902,7 @@ function updateOpBtn(){
 }
 function openOperator(){
   document.getElementById('operatorChoices').innerHTML=state.admins.map(a=>
-    `<button class="op-choice" onclick="pickOperator('${a.replace(/'/g,"\\'")}')">${a}</button>`).join('');
+    `<button class="op-choice" onclick="pickOperator(${escJ(a)})">${escI(a)}</button>`).join('');
   document.getElementById('operatorInput').value=getOperator();
   openModal('modalOperator');
 }
@@ -2182,7 +2225,8 @@ function analyzeImport(wb){
     res.skipped.forEach(x=>{ if(!allSkipped.includes(x)) allSkipped.push(x); });
     Object.keys(res.nameCols).forEach(n=>matchedNames.add(n));
     // 新しい研修生は最初に見つけたシートの情報を採用する
-    Object.entries(res.newNameCols).forEach(([n,info])=>{ if(!allNew[n]) allNew[n]=info; });
+    // 記号が1つも読めなかった列（「確認欄」「店長」など）は研修生ではないので候補にしない
+    Object.entries(res.newNameCols).forEach(([n,info])=>{ if(info.changes.length && !allNew[n]) allNew[n]=info; });
   });
 
   if(!anyHead){
@@ -2294,7 +2338,7 @@ function renderImportModal(changes,skipped,names,newNameCols){
     const info=newNameCols[n];
     return `
     <label class="diffrow" style="background:#eef7f0;border-color:#8fcaa5">
-      <input type="checkbox" data-new="${escI(n)}" checked>
+      <input type="checkbox" data-new="${escI(n)}">
       <span class="who">🆕 ${escI(n)}さん</span>
       <span class="itm">Excelにだけいる名前です — <b>研修生に追加</b>して記入 <b>${info.changes.length}件</b> を取り込む${info.invalid?`（判別不能 ${info.invalid}件は除外）`:""}</span>
     </label>`;
@@ -2335,7 +2379,7 @@ function applyImport(){
     const info=pendingImportNew[name];
     if(!info || state.names.includes(name)) return;
     state.names.push(name);
-    state.items.forEach(it=>{ it.vals[name]=""; it.who[name]=""; it.date[name]=""; it.memo[name]={}; });
+    state.items.forEach(it=>{ it.vals[name]=""; it.who[name]=""; it.date[name]=""; it.memo[name]={}; if(it.upd) delete it.upd[name]; });
     state.traineeJob=state.traineeJob||{};
     if(!(name in state.traineeJob)) state.traineeJob[name]=""; // 職種は「研修生を管理」から後で設定
     info.changes.forEach(ch=>{
