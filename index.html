@@ -344,6 +344,20 @@
   .progtxt{font-size:13.5px;color:var(--ok);font-weight:700}
   .name-th{font-size:17px;color:var(--ink)}
   .name-job{font-size:11px;color:#9aa7b3;font-weight:600;margin-top:1px}
+  .name-link{cursor:pointer;border-radius:6px;padding:1px 6px;display:inline-block}
+  .name-link:hover{background:var(--bg);color:var(--brand);text-decoration:underline}
+  /* 個人カルテ */
+  .card-cat{font-weight:700;color:var(--brand-d);font-size:12.5px;margin:14px 0 6px;
+    border-bottom:1px solid var(--line);padding-bottom:4px}
+  .card-cat:first-child{margin-top:0}
+  .card-row{display:flex;gap:10px;align-items:flex-start;padding:8px 8px;border-radius:8px;cursor:pointer}
+  .card-row:hover{background:var(--bg)}
+  .card-main{flex:1;min-width:0}
+  .card-item{display:block;font-size:14px;font-weight:600;line-height:1.5;word-break:break-word}
+  .card-meta{display:block;font-size:11.5px;color:var(--sub);margin-top:2px}
+  .card-memo{display:block;font-size:12px;color:var(--ink);background:var(--bg);border-radius:6px;
+    padding:5px 8px;margin-top:4px;line-height:1.5;word-break:break-word}
+  #cardList{max-height:46vh;overflow-y:auto}
 
   .summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .scard{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow)}
@@ -631,6 +645,7 @@
   <button onclick="closeAllPops();openAdmins()">🧑‍🏫 担当者を管理</button>
   <button onclick="closeAllPops();openItems()">📋 項目を編集</button>
   <button onclick="closeAllPops();openJobs()">🏷 職種ごとの対象外設定</button>
+  <button onclick="toggleXlDate(event)" id="xlDateBtn">📅 Excelに研修日欄を付ける：オフ</button>
   <div class="pop-actions">
     <button onclick="closeAllPops();exportData()">💾 バックアップ（保存）</button>
     <button onclick="closeAllPops();importBackup()">↩ バックアップから復元</button>
@@ -726,6 +741,27 @@
     <div class="modal-f">
       <button class="btn" id="ackCommentsBtn" onclick="ackComments()">確認（バッジを消す）</button>
       <button class="btn primary" onclick="closeModal('modalComments')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalCard">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-h"><h2 id="cardTitle">個人カルテ</h2><button class="modal-x" onclick="closeModal('modalCard')">×</button></div>
+    <div class="modal-b">
+      <div id="cardSummary"></div>
+      <div class="filterpills" style="margin:14px 0 12px">
+        <span class="pill active" data-cf="warn" onclick="setCardFilter(this)">要フォロー(▲)</span>
+        <span class="pill" data-cf="empty" onclick="setCardFilter(this)">未実施</span>
+        <span class="pill" data-cf="done" onclick="setCardFilter(this)">完了(○・書)</span>
+        <span class="pill" data-cf="memo" onclick="setCardFilter(this)">コメントあり</span>
+        <span class="pill" data-cf="all" onclick="setCardFilter(this)">すべて</span>
+      </div>
+      <div id="cardList"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="printCard()">この人だけ印刷</button>
+      <button class="btn primary" onclick="closeModal('modalCard')">閉じる</button>
     </div>
   </div>
 </div>
@@ -1427,8 +1463,8 @@ function render(){
   names.forEach(n=>{
     const p=progressFor(n);
     const job=(state.traineeJob||{})[n]||"";
-    html+=`<th title="完了（○・書）${p.done}件／対象 ${p.total}項目（―は除く）">
-      <div class="name-th">${escI(n)}</div>
+    html+=`<th title="完了（○・書）${p.done}件／対象 ${p.total}項目（―は除く）　※名前をクリックで個人カルテ">
+      <div class="name-th name-link" onclick="openCard(${escJ(n)})">${escI(n)}</div>
       ${job?`<div class="name-job">${escI(job)}</div>`:""}
       <div class="prog"><div class="progbar"><span style="width:${p.pct}%"></span></div><div class="progtxt">${p.pct}%</div></div></th>`;
   });
@@ -1511,11 +1547,27 @@ function toggleWarnFilter(){
   if(pill) setFilter(pill);
 }
 
+/* ---- Excelに研修日の記入欄を付けるかの設定（端末ごとに記憶） ---- */
+function xlDateOn(){ try{ return localStorage.getItem('xlWithDate')==="1"; }catch(e){ return false; } }
+function updateXlDateBtn(){
+  const b=document.getElementById('xlDateBtn');
+  if(b) b.textContent=`📅 Excelに研修日欄を付ける：${xlDateOn()?"オン":"オフ"}`;
+}
+function toggleXlDate(ev){
+  ev.stopPropagation();
+  try{ localStorage.setItem('xlWithDate', xlDateOn()?"0":"1"); }catch(e){}
+  updateXlDateBtn();
+  toast(xlDateOn()
+    ? "Excelに研修日の記入欄を付けます（店舗で書いた日付を取込で反映できます）"
+    : "研修日欄なしで出力します（紙の様式に近い見た目）");
+}
+
 /* ---- 設定メニュー ---- */
 function openSettings(ev){
   ev.stopPropagation();
   const r=ev.target.getBoundingClientRect();
   closeAllPops();
+  updateXlDateBtn();
   const sp=document.getElementById('spop');
   sp.classList.add('show');
   sp.style.left=Math.max(8,Math.min(r.left,window.innerWidth-sp.offsetWidth-8))+"px";
@@ -1955,6 +2007,91 @@ function jumpToItem(id){
   });
 }
 
+/* ---- 個人カルテ（面談用に1人分をまとめて見る） ---- */
+let cardName=null, cardFilter="warn";
+function openCard(name){
+  cardName=name; cardFilter="warn";
+  document.querySelectorAll('.pill[data-cf]').forEach(p=>p.classList.toggle('active',p.dataset.cf==="warn"));
+  renderCard();
+  openModal('modalCard');
+}
+function setCardFilter(el){
+  document.querySelectorAll('.pill[data-cf]').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active'); cardFilter=el.dataset.cf; renderCard();
+}
+function renderCard(){
+  const n=cardName; if(!n) return;
+  const p=progressFor(n);
+  const job=(state.traineeJob||{})[n]||"";
+  // 記号ごとの件数
+  const cnt={"○":0,"▲":0,"―":0,"書":0,"":0};
+  state.items.forEach(it=>{ const v=it.vals[n]||""; if(v in cnt) cnt[v]++; });
+  const memoCount=state.items.filter(it=>hasMemo(it,n)).length;
+
+  document.getElementById('cardTitle').textContent=`${n} さんのカルテ`;
+  document.getElementById('cardSummary').innerHTML=`
+    <div class="summary" style="margin-bottom:0">
+      <div class="scard"><div class="n">${p.pct}%</div><div class="l">達成率${job?`（${escI(job)}）`:""}</div></div>
+      <div class="scard"><div class="n" style="color:var(--ok)">${cnt["○"]+cnt["書"]}</div><div class="l">完了（○・書）</div></div>
+      <div class="scard"><div class="n" style="color:var(--warn)">${cnt["▲"]}</div><div class="l">▲ 要フォロー</div></div>
+      <div class="scard"><div class="n" style="color:var(--sub)">${cnt[""]}</div><div class="l">未実施</div></div>
+      <div class="scard"><div class="n" style="color:var(--doc)">${memoCount}</div><div class="l">コメント</div></div>
+    </div>`;
+
+  const match=(it)=>{
+    const v=it.vals[n]||"";
+    if(cardFilter==="all") return v!=="―";
+    if(cardFilter==="warn") return v==="▲";
+    if(cardFilter==="empty") return v==="";
+    if(cardFilter==="done") return v==="○"||v==="書";
+    if(cardFilter==="memo") return hasMemo(it,n);
+    return true;
+  };
+  const rows=state.items.filter(match);
+  const box=document.getElementById('cardList');
+  if(!rows.length){ box.innerHTML='<div class="empty-note">該当する項目はありません</div>'; return; }
+
+  let html="", lastCat=null;
+  rows.forEach(it=>{
+    if(it.cat!==lastCat){ html+=`<div class="card-cat">${escI(it.cat)}</div>`; lastCat=it.cat; }
+    const v=it.vals[n]||"";
+    const dt=it.date[n]||"";
+    const who=it.who[n]||"";
+    const memos=memoAuthors(it,n);
+    html+=`<div class="card-row" onclick="closeModal('modalCard');jumpToItem(${it.id})" title="クリックすると表のその項目へ移動します">
+      <span class="chip ${stClass(v).replace('st-','')}">${v||"・"}</span>
+      <span class="card-main">
+        <span class="card-item">${escI(it.item)}</span>
+        <span class="card-meta">${dt?`📅 ${escI(fmtMemoDate(dt))}`:""}${who?`　👤 ${escI(who)}`:""}</span>
+        ${memos.map(o=>`<span class="card-memo">✍${escI(o.author)}${o.date?` ${escI(fmtMemoDate(o.date))}`:""}：${escI(o.text)}</span>`).join("")}
+      </span>
+    </div>`;
+  });
+  box.innerHTML=html;
+}
+// カルテの内容だけを印刷する
+function printCard(){
+  const w=window.open("","_blank");
+  if(!w){ toast("ポップアップがブロックされました。設定で許可してください。"); return; }
+  const title=document.getElementById('cardTitle').textContent;
+  w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>${escI(title)}</title>
+    <style>
+      body{font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;padding:16px;color:#1c2833;font-size:12px}
+      h1{font-size:17px;margin:0 0 4px} .sub{color:#5b6b7a;font-size:11px;margin-bottom:12px}
+      .card-cat{font-weight:700;color:#0b4568;margin:12px 0 4px;border-bottom:1px solid #ccc;font-size:12px}
+      .card-row{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #eee;page-break-inside:avoid}
+      .chip{flex-shrink:0;width:20px;text-align:center;font-weight:700}
+      .card-item{font-weight:600} .card-meta,.card-memo{display:block;color:#5b6b7a;font-size:10.5px}
+      @page{size:A4 portrait;margin:12mm}
+    </style></head><body>
+    <h1>${escI(title)}</h1>
+    <div class="sub">${escI(document.querySelector('.pill[data-cf].active').textContent)}／出力：${todayStr()}</div>
+    ${document.getElementById('cardList').innerHTML.replace(/ onclick="[^"]*"/g,"").replace(/ title="[^"]*"/g,"")}
+    </body></html>`);
+  w.document.close();
+  setTimeout(()=>{ w.print(); },300);
+}
+
 /* ---- 変更履歴（件数が増えたので絞り込みできるようにする） ---- */
 function openHistory(){
   const sel=document.getElementById('histOp');
@@ -2106,7 +2243,12 @@ function addProgressSheet(wb, sheetName, names, opts){
     views:[{state:"frozen",ySplit:4}],
   });
 
-  const lastCol=2+names.length+1; // カテゴリ+項目+研修生...+担当者
+  const withDate=xlDateOn();           // 研修日の記入欄を付けるか
+  const per=withDate?2:1;              // 研修生1人あたりの列数
+  const lastCol=2+names.length*per+1;  // カテゴリ+項目+研修生...+担当者
+  // 研修生iの記号列／日付列の位置
+  const markCol=(i)=>3+i*per;
+  const dateCol=(i)=>3+i*per+1;
   const thin={style:"thin",color:{argb:"FFB8C4CE"}};
   const border={top:thin,left:thin,bottom:thin,right:thin};
   const catTop={style:"medium",color:{argb:"FF6B7B88"}};
@@ -2118,11 +2260,12 @@ function addProgressSheet(wb, sheetName, names, opts){
 
   // 列幅：カテゴリ／項目／研修生×n／担当者
   // 研修生の列は氏名が収まる幅にする（担当者の列は中身を見てから最後に調整する）
-  ws.columns=[
-    {width:13},{width:38},
-    ...names.map(n=>({width:Math.max(8.5, xlWidth(n)+2.5)})),
-    {width:11},
-  ];
+  const nameCols=[];
+  names.forEach(n=>{
+    nameCols.push({width:Math.max(8.5, xlWidth(n)+2.5)});
+    if(withDate) nameCols.push({width:11}); // 研修日の記入欄
+  });
+  ws.columns=[{width:13},{width:38},...nameCols,{width:11}];
 
   // 1行目：タイトル＋出力日
   ws.mergeCells(1,1,1,lastCol-1);
@@ -2145,7 +2288,9 @@ function addProgressSheet(wb, sheetName, names, opts){
   ws.getRow(2).height=16;
 
   // 3行目：見出し
-  const head=["項　目","内　容",...names,"管理者確認"];
+  const head=["項　目","内　容"];
+  names.forEach(n=>{ head.push(n); if(withDate) head.push("日付"); });
+  head.push("管理者確認");
   head.forEach((h,i)=>{
     const c=ws.getCell(3,i+1);
     c.value=h;
@@ -2165,7 +2310,10 @@ function addProgressSheet(wb, sheetName, names, opts){
   prCell.border=border;
   names.forEach((n,i)=>{
     const p=progressFor(n);
-    const c=ws.getCell(4,3+i);
+    if(withDate){ // 日付列は空白のまま枠線だけ引く
+      const dc=ws.getCell(4,dateCol(i)); dc.value=""; dc.border=border;
+    }
+    const c=ws.getCell(4,markCol(i));
     c.value=p.pct/100;
     c.numFmt="0%";
     c.font={name:FONT,size:10,bold:true,color:{argb:"FF1F9D57"}};
@@ -2207,7 +2355,7 @@ function addProgressSheet(wb, sheetName, names, opts){
 
     names.forEach((n,i)=>{
       const v=it.vals[n]||"";
-      const c=ws.getCell(r,3+i);
+      const c=ws.getCell(r,markCol(i));
       c.value=v;
       const sym=SYM[v];
       c.font={name:FONT,size:11,bold:true,color:{argb:sym?sym.font:"FF9AA7B3"}};
@@ -2220,6 +2368,15 @@ function addProgressSheet(wb, sheetName, names, opts){
       if(it.who[n])  noteParts.push("担当: "+it.who[n]);
       memoAuthors(it,n).forEach(o=>noteParts.push("メモ("+o.author+(o.date?" "+fmtMemoDate(o.date):"")+"): "+o.text));
       if(noteParts.length) c.note=noteParts.join("\n");
+
+      // 研修日の記入欄（店舗で書き込んでもらい、取込時に反映する）
+      if(withDate){
+        const dc=ws.getCell(r,dateCol(i));
+        dc.value=it.date[n]||"";
+        dc.font={name:FONT,size:9.5,color:{argb:"FF5B6B7A"}};
+        dc.alignment={horizontal:"center",vertical:"middle"};
+        dc.border=(r===catStart)?{...border,top:catTop}:border;
+      }
     });
 
     // 管理者確認欄：セルに付けた担当者（複数可）を全員分まとめて表示
@@ -2256,6 +2413,25 @@ const escA=escI;
 // onclick="fn(${escJ(name)})" のように、属性内のJS文字列リテラルとして安全に埋め込む
 function escJ(s){return escI(JSON.stringify(String(s??"")));}
 
+// Excelの日付欄を YYYY-MM-DD に正規化する。
+// 「2026-07-20」「2026/7/20」「26/07/20」「7/20」やExcelの日付型に対応。
+// 空欄は ""、読めない場合は null を返す。
+function normDate(v){
+  if(v==null||v==="") return "";
+  const pad=(x)=>String(x).padStart(2,"0");
+  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+  let t=String(v).trim().replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[.年月]/g,"/").replace(/日/g,"");
+  t=t.replace(/-/g,"/").replace(/\/+$/,"");
+  const p=t.split("/").filter(x=>x!=="");
+  const now=new Date();
+  let y,m,d;
+  if(p.length===3){ y=+p[0]; m=+p[1]; d=+p[2]; if(y<100) y+=2000; }
+  else if(p.length===2){ y=now.getFullYear(); m=+p[0]; d=+p[1]; }
+  else return null;
+  if(!(m>=1&&m<=12&&d>=1&&d<=31&&y>=2000&&y<=2100)) return null;
+  return `${y}-${pad(m)}-${pad(d)}`;
+}
+
 // 手書き・手入力の揺れを吸収して正規の記号に直す。判別できない場合は null
 function normSym(s){
   s=String(s==null?"":s).replace(/[\s　]/g,"");
@@ -2288,6 +2464,19 @@ function importExcelFile(){
     }catch(e){ console.error(e); toast('Excelを読み込めませんでした（'+(e&&e.message||e)+'）'); }
   };
   inp.click();
+}
+
+// 日付欄は書式によって .text が「2026/7/20」等の表示文字列になるため、
+// 生の値（Dateオブジェクト）が取れる場合はそちらを優先する。
+function importCellRaw(ws,r,c){
+  try{
+    const cell=ws.getRow(r).getCell(c);
+    if(!cell) return null;
+    const v=cell.value;
+    if(v instanceof Date) return v;
+    if(v && typeof v==="object" && v.result instanceof Date) return v.result;
+  }catch(e){}
+  return null;
 }
 
 function importCellText(ws,r,c){
@@ -2377,12 +2566,20 @@ function analyzeSheet(ws){
   }
   if(!headRow) return null; // このシートは進捗表ではない
 
+  // 研修生名の右隣が「日付」なら、研修日の記入欄として取り込む
+  // （設定「Excelに研修日欄を付ける」をオンで出力したファイル）
+  const dateCols={};
+  Object.entries(nameCols).forEach(([n,c])=>{
+    if(normTitle(importCellText(ws,headRow,c+1))==="日付") dateCols[n]=c+1;
+  });
+
   // 見出し行にいる「現在のシステムに居ない名前」＝新しい研修生の候補
   const IGNORE_HEADS=["項目","内容","管理者確認","氏名","備考","メモ","担当","担当者","日付","達成率","№","no","番号"];
   const newNameCols={};
   for(let c=1;c<=ws.columnCount;c++){
     if(c===itemCol||c===catCol) continue;
     if(Object.values(nameCols).includes(c)) continue;
+    if(Object.values(dateCols).includes(c)) continue;
     const raw=importCellText(ws,headRow,c);
     const t=normTitle(raw);
     if(!t||IGNORE_HEADS.includes(t.toLowerCase())) continue;
@@ -2415,7 +2612,20 @@ function analyzeSheet(ws){
       const nv=normSym(raw);
       if(nv===null){ skipped.push(`「${it.item}」${n}さん：記号「${raw}」を判別できないため対象外`); return; }
       const cur=it.vals[n]||"";
-      if(nv!==cur) changes.push({id:it.id,cat:it.cat,item:it.item,name:n,oldV:cur,newV:nv});
+
+      // 研修日欄（あれば）。空欄は「未記入」として無視し、既存の日付は消さない
+      let oldD=null,newD=null;
+      if(n in dateCols){
+        const dRaw=importCellRaw(ws,r,dateCols[n]) ?? importCellText(ws,r,dateCols[n]);
+        const nd=normDate(dRaw);
+        if(nd===null){ skipped.push(`「${it.item}」${n}さん：日付「${dRaw}」を読み取れないため対象外`); }
+        else if(nd!==""){
+          const cd=it.date[n]||"";
+          if(nd!==cd){ oldD=cd; newD=nd; }
+        }
+      }
+
+      if(nv!==cur || newD) changes.push({id:it.id,cat:it.cat,item:it.item,name:n,oldV:cur,newV:nv,oldD,newD});
     });
     // 新しい研修生の記号も集める（追加が選ばれた場合だけ反映する）
     Object.entries(newNameCols).forEach(([n,info])=>{
@@ -2458,7 +2668,7 @@ function renderImportModal(changes,skipped,names,newNameCols){
       <input type="checkbox" data-i="${i}" checked>
       <span class="who">${escI(ch.name)}さん</span>
       <span class="itm"><b>${escI(ch.item)}</b>　${escI(ch.cat)}</span>
-      <span class="chg">${importChipHtml(ch.oldV)} → ${importChipHtml(ch.newV)}</span>
+      <span class="chg">${ch.oldV!==ch.newV?`${importChipHtml(ch.oldV)} → ${importChipHtml(ch.newV)}`:`<span style="color:#8b96a0">${importChipHtml(ch.newV)}</span>`}${ch.newD?`<span style="margin-left:6px;font-size:12px;color:#2f7d4f">📅${escI(ch.oldD||"未記入")}→${escI(ch.newD)}</span>`:""}</span>
     </label>`).join('');
   const sk=document.getElementById('importSkipped');
   if(skipped.length){
@@ -2509,8 +2719,10 @@ function applyImport(){
     const it=ch && state.items.find(x=>x.id===ch.id);
     if(!it) return;
     it.vals[ch.name]=ch.newV;
-    // 画面での操作と同じく、初めて○・▲が付いた時は日付を自動記録
-    if((ch.newV==="○"||ch.newV==="▲") && !it.date[ch.name]) it.date[ch.name]=todayStr();
+    // Excelに研修日が書かれていればそれを優先。無ければ画面での操作と同じく、
+    // 初めて○・▲が付いた時に今日の日付を自動記録する
+    if(ch.newD) it.date[ch.name]=ch.newD;
+    else if((ch.newV==="○"||ch.newV==="▲") && !it.date[ch.name]) it.date[ch.name]=todayStr();
     markUpdated(it,ch.name);
     n++;
   });
