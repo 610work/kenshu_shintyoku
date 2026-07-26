@@ -241,7 +241,11 @@
   .catnav-btn.closed::before{content:"▶ ";font-size:9px}
   /* スマホ・狭い画面：カテゴリメニューを表の上の横スクロールバーにする */
   @media(max-width:900px){
-    .layout{flex-direction:column;gap:8px}
+    /* 縦積みでは align-items:flex-start のままだと表エリアが「表の中身の幅」
+       まで広がってページ全体が横に伸びてしまう。画面幅に合わせて中で
+       横スクロールさせる */
+    .layout{flex-direction:column;gap:8px;align-items:stretch}
+    .layout>div{width:100%;max-width:100%}
     .catnav{
       position:sticky;top:auto;flex:none;width:100%;max-height:none;
       display:flex;gap:4px;overflow-x:auto;padding:7px 8px;border-radius:10px;
