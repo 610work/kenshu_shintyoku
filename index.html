@@ -835,6 +835,9 @@ function markUpdated(it,name){
 // そのセルが24時間以内に更新されたか
 // （旧データは "2026-07-25" のような日付文字列なので、その日のうちかで判定する）
 function updatedRecently(it,name){
+  // New!は「研修が進んだ」印。未実施(空欄)と対象外(―)は進捗ではないので出さない
+  const mark=(it && it.vals && it.vals[name])||"";
+  if(mark===""||mark==="―") return false;
   const v=it && it.upd && it.upd[name];
   if(!v) return false;
   if(typeof v==="number") return (Date.now()-v) < 86400000;
@@ -1097,8 +1100,8 @@ function cycle(id,name){const it=state.items.find(x=>x.id===id);
   // ○/▲以外（未実施・対象外・書類）に変わったら日付は不要なのでクリアする
   if(next==="○"||next==="▲"){ if(!it.date[name]) it.date[name]=todayStr(); }
   else if(next==="―" && it.date[name]) it.date[name]=""; // 対象外に戻した時だけ消す（書・未実施は日付を残す）
-  // 未実施（空欄）に戻したセルは「更新あり」の対象から外し、New!を消す
-  if(next==="" && it.upd) delete it.upd[name];
+  // 未実施（空欄）・対象外（―）にしたセルは進捗ではないので更新記録を残さない
+  if((next===""||next==="―") && it.upd) delete it.upd[name];
   else markUpdated(it,name);
   // 同じマスを続けて切り替えている間は履歴を1件にまとめる。
   // 連続操作の「最初の値」を起点に、最終的な値だけを残す。
