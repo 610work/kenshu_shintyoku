@@ -265,6 +265,16 @@
   tbody tr:hover td{background:#f8fbfd}
   tbody tr:hover .col-cat,tbody tr:hover .col-item{background:#f8fbfd}
   .itemname{font-weight:500}
+  /* 集団研修用の一括入力ボタン（行にカーソルを乗せた時だけ出す） */
+  .bulkrow{display:inline-flex;gap:4px;margin-left:8px;opacity:0;transition:opacity .12s;vertical-align:middle}
+  tbody tr:hover .bulkrow{opacity:1}
+  .bulkbtn{
+    border:1px solid var(--line);background:#fff;border-radius:6px;
+    font-size:11px;font-weight:700;padding:2px 7px;cursor:pointer;font-family:inherit;white-space:nowrap;
+  }
+  .bulkbtn.ok{color:var(--ok)} .bulkbtn.ok:hover{background:var(--ok-bg);border-color:var(--ok)}
+  .bulkbtn.warn{color:var(--warn)} .bulkbtn.warn:hover{background:var(--warn-bg);border-color:var(--warn)}
+  @media(hover:none){ .bulkrow{opacity:1} } /* タッチ端末では常に表示 */
   tr.catstart td{border-top:2px solid var(--line)}
   .catlabel{padding-top:11px}
 
@@ -724,7 +734,11 @@
   <div class="modal">
     <div class="modal-h"><h2>変更履歴</h2><button class="modal-x" onclick="closeModal('modalHistory')">×</button></div>
     <div class="modal-b">
-      <div class="subhead">新しい順に最大150件を表示します</div>
+      <div class="subhead">新しい順に表示します。研修生名や項目名で絞り込めます。<span id="histCount" style="color:var(--brand);margin-left:6px"></span></div>
+      <div class="addrow" style="margin:0 0 10px">
+        <input type="search" id="histSearch" placeholder="研修生名・項目名で検索…" oninput="renderHistory()">
+        <select id="histOp" class="job-select" onchange="renderHistory()" title="操作した人で絞り込み"><option value="">全員</option></select>
+      </div>
       <div id="historyList"></div>
     </div>
     <div class="modal-f"><button class="btn primary" onclick="closeModal('modalHistory')">閉じる</button></div>
@@ -795,6 +809,9 @@ function syncJob(name, twoWay){
 // 操作している人の名前（端末ごとに記憶）
 function getOperator(){ try{ return localStorage.getItem('operatorName')||""; }catch(e){ return ""; } }
 
+// 変更履歴の保持件数。これを超えると古いものから捨てられる。
+const LOG_KEEP=3000;
+
 // 変更履歴に1件追加（誰が・いつ・何をしたか）。
 // key を渡すと、直前の履歴が同じ key のときは新規追加せず「上書き」する。
 // これで同じマスをカチカチ切り替えても、次に別の操作をするまでは1件にまとまる。
@@ -807,7 +824,8 @@ function logChange(txt,key){
   }else{
     state.log.push({ t: now, op, txt: String(txt).slice(0,120), key: key||null });
   }
-  if(state.log.length>300) state.log=state.log.slice(-300);
+  // 保持件数。差分保存にしたことで送信量が問題にならなくなったため多めに持つ
+  if(state.log.length>LOG_KEEP) state.log=state.log.slice(-LOG_KEEP);
 }
 // コメントは「担当者ごと」に保存する： it.memo[研修生] = { 担当者名: 本文, ... }
 // 旧データ（1つの文字列）は「（以前の記録）」名義の1件として扱う
@@ -1305,6 +1323,26 @@ function positionWhoPop(r){
   positionPopover(pop, r, pop.querySelector('.pop-list'), {minList:120,maxList:380});
 }
 
+/* ---- 集団研修：この項目を表示中の全員にまとめて付ける ---- */
+// 既に○▲書が入っているマスと、対象外(―)のマスには触らない。
+// 「まだ手を付けていない人」だけに付けるので、押しても実績は上書きされない。
+function bulkMark(id,mark){
+  const it=state.items.find(x=>x.id===id);
+  if(!it){ toast("この項目は削除されました"); render(); return; }
+  const targets=visibleNames().filter(n=>(it.vals[n]||"")==="");
+  if(!targets.length){ toast("未実施の人がいません（対象外と入力済みは変更しません）"); return; }
+  const label=filterJob?`${filterJob}の`:"";
+  if(!confirm(`「${it.item}」を ${label}未実施の${targets.length}名に「${mark}」で付けます。\n（対象外と入力済みのマスは変更しません）`)) return;
+  targets.forEach(n=>{
+    it.vals[n]=mark;
+    if(!it.date[n]) it.date[n]=todayStr();
+    markUpdated(it,n);
+  });
+  logChange(`${it.item}：${targets.length}名に「${mark}」を一括入力`);
+  save(); render();
+  toast(`${targets.length}名に「${mark}」を付けました`);
+}
+
 // 集団研修用：この項目の担当者を、すでに○か△が入っている研修生だけにまとめて適用する
 // （まだ実施していない＝空欄や―の人には入れない）
 function applyWhoToRow(){
@@ -1415,7 +1453,12 @@ function render(){
     shown++;
     html+=`<tr class="${isNew?'catstart':''}" data-id="${it.id}"${isNew?` data-cat="${escA(it.cat)}"`:''}>`;
     if(isNew){html+=`<td class="col-cat catlabel" onclick="toggleCat(${escJ(it.cat)})"><span class="catarrow">▼</span>${escI(it.cat)}</td>`;lastCat=it.cat;}else{html+=`<td class="col-cat"></td>`;}
-    html+=`<td class="col-item"><span class="itemname">${escI(it.item)}</span></td>`;
+    // 集団研修用：この項目を表示中の全員にまとめて付けるボタン
+    html+=`<td class="col-item"><span class="itemname">${escI(it.item)}</span>
+      <span class="bulkrow">
+        <button class="bulkbtn ok" onclick="bulkMark(${it.id},'○')" title="この項目を表示中の全員に ○ を付ける（○▲書が入っているマスと対象外はそのまま）">全員○</button>
+        <button class="bulkbtn warn" onclick="bulkMark(${it.id},'▲')" title="この項目を表示中の全員に ▲ を付ける（○▲書が入っているマスと対象外はそのまま）">全員▲</button>
+      </span></td>`;
     names.forEach(n=>{
       const v=it.vals[n]||"";const who=it.who[n]||"";const dt=it.date[n]||"";const memoOn=hasMemo(it,n);const memoTip=memoTooltip(it,n);
       const dtShort=dt?dt.replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):"";
@@ -1539,14 +1582,16 @@ function renderTraineeList(){
   const arch=state.archived||[];
   const jobSel=document.getElementById('newTraineeJob');
   if(jobSel) jobSel.innerHTML=jobOptionsHtml(jobSel.value||"");
-  state.names.forEach((n,i)=>{
-    if(arch.includes(n)) return; // 修了者は下の別枠に表示
+  // 修了者を除いた「表示される並び」で上下させる
+  // （実配列の添字で動かすと、間に修了者がいる時に見た目が変わらない）
+  const shown=state.names.filter(n=>!arch.includes(n));
+  shown.forEach((n,i)=>{
     const job=(state.traineeJob||{})[n]||"";
     box.innerHTML+=`<div class="listrow">
       <span class="name">${escI(n)}</span>
       <select class="job-select" onchange="changeTraineeJob(${escJ(n)},this.value)">${jobOptionsHtml(job)}</select>
-      <button class="mini up" onclick="moveTrainee(${i},-1)" ${i===0?'disabled style=opacity:.3':''}>↑</button>
-      <button class="mini down" onclick="moveTrainee(${i},1)" ${i===state.names.length-1?'disabled style=opacity:.3':''}>↓</button>
+      <button class="mini up" onclick="moveTrainee(${escJ(n)},-1)" ${i===0?'disabled style=opacity:.3':''}>↑</button>
+      <button class="mini down" onclick="moveTrainee(${escJ(n)},1)" ${i===shown.length-1?'disabled style=opacity:.3':''}>↓</button>
       <button class="mini" style="color:#1f7a44" onclick="archiveTrainee(${escJ(n)})">修了</button>
     </div>`;
   });
@@ -1696,7 +1741,17 @@ function applyJobToExisting(){
   logChange(`職種「${nm}」の対象外を${targets.length}名に反映`);
   save();render();toast(`${targets.length}名に反映しました`);
 }
-function moveTrainee(i,d){const j=i+d;if(j<0||j>=state.names.length)return;[state.names[i],state.names[j]]=[state.names[j],state.names[i]];save();renderTraineeList();}
+// 表示されている並びの中で、指定の研修生を上下に動かす
+function moveTrainee(name,d){
+  const arch=state.archived||[];
+  const shown=state.names.filter(n=>!arch.includes(n));
+  const pos=shown.indexOf(name), target=pos+d;
+  if(pos<0||target<0||target>=shown.length) return;
+  // 表示上の入れ替え結果を、実配列の該当位置へ反映する
+  const a=state.names.indexOf(shown[pos]), b=state.names.indexOf(shown[target]);
+  [state.names[a],state.names[b]]=[state.names[b],state.names[a]];
+  save();renderTraineeList();
+}
 
 function openAdmins(){renderAdminList();openModal('modalAdmins');}
 function renderAdminList(){
@@ -1900,15 +1955,31 @@ function jumpToItem(id){
   });
 }
 
-/* ---- 変更履歴 ---- */
+/* ---- 変更履歴（件数が増えたので絞り込みできるようにする） ---- */
 function openHistory(){
-  const list=(state.log||[]).slice(-150).reverse();
-  document.getElementById('historyList').innerHTML=list.length?list.map(e=>{
+  const sel=document.getElementById('histOp');
+  if(sel){
+    const ops=[...new Set((state.log||[]).map(e=>e.op).filter(Boolean))].sort();
+    const cur=sel.value;
+    sel.innerHTML=`<option value="">全員</option>`+ops.map(o=>`<option value="${escA(o)}" ${o===cur?"selected":""}>${escI(o)}</option>`).join("");
+  }
+  renderHistory();
+  openModal('modalHistory');
+}
+function renderHistory(){
+  const q=(document.getElementById('histSearch').value||"").trim().toLowerCase();
+  const op=document.getElementById('histOp').value;
+  let list=(state.log||[]).slice().reverse();
+  if(op) list=list.filter(e=>e.op===op);
+  if(q) list=list.filter(e=>String(e.txt||"").toLowerCase().includes(q)||String(e.op||"").toLowerCase().includes(q));
+  const shown=list.slice(0,300); // 一度に描くのは300件まで（重くならないように）
+  document.getElementById('histCount').textContent=
+    list.length ? `${list.length}件${list.length>shown.length?`（新しい${shown.length}件を表示）`:""}` : "";
+  document.getElementById('historyList').innerHTML=shown.length?shown.map(e=>{
     const d=new Date(e.t||0);
     const ts=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     return `<div class="histrow"><span class="ht">${ts}</span><span class="ho">${escI(e.op)}</span><span class="hx">${escI(e.txt)}</span></div>`;
-  }).join(''):'<div class="empty-note">まだ履歴はありません</div>';
-  openModal('modalHistory');
+  }).join(''):'<div class="empty-note">該当する履歴はありません</div>';
 }
 
 /* ---- 操作者（誰が使っているか） ---- */
