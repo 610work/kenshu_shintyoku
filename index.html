@@ -1996,6 +1996,16 @@ async function buildExcelWorkbook(){
   return wb;
 }
 
+// Excelの列幅の目安を計算する。
+// 列幅は半角1文字ぶんが約1なので、日本語などの全角文字は2として数える。
+function xlWidth(s){
+  let w=0;
+  for(const ch of String(s??"")){
+    w += /[ -~｡-ﾟ]/.test(ch) ? 1 : 2;
+  }
+  return w;
+}
+
 // 進捗表を1シート分描く（names=載せる研修生、opts.skipAllDash=全員―の行を省く）
 function addProgressSheet(wb, sheetName, names, opts){
   const FONT="Yu Gothic";
@@ -2020,7 +2030,12 @@ function addProgressSheet(wb, sheetName, names, opts){
               "書":{font:"FF6B4FBB",fill:"FFEFEAFA"} };
 
   // 列幅：カテゴリ／項目／研修生×n／担当者
-  ws.columns=[{width:13},{width:38},...names.map(()=>({width:8.5})),{width:11}];
+  // 研修生の列は氏名が収まる幅にする（担当者の列は中身を見てから最後に調整する）
+  ws.columns=[
+    {width:13},{width:38},
+    ...names.map(n=>({width:Math.max(8.5, xlWidth(n)+2.5)})),
+    {width:11},
+  ];
 
   // 1行目：タイトル＋出力日
   ws.mergeCells(1,1,1,lastCol-1);
@@ -2078,6 +2093,7 @@ function addProgressSheet(wb, sheetName, names, opts){
 
   // 5行目〜：データ（カテゴリは縦に結合して紙の様式と同じ見た目に）
   let r=5, catStart=5, prevCat=null;
+  let maxAdminW=xlWidth("管理者確認"); // 担当者欄の最大文字幅（見出しぶんから始める）
   const flushCatMerge=(endRow)=>{
     if(prevCat!==null && endRow>catStart) ws.mergeCells(catStart,1,endRow,1);
   };
@@ -2124,6 +2140,8 @@ function addProgressSheet(wb, sheetName, names, opts){
     names.forEach(n=>String((it.who&&it.who[n])||"").split("・").filter(Boolean).forEach(w=>whoSet.add(w)));
     const adminCell=ws.getCell(r,lastCol);
     adminCell.value=[...whoSet].join("・");
+    // 一番長い担当者名の並びに合わせて、あとで列幅を広げる
+    maxAdminW=Math.max(maxAdminW, xlWidth(adminCell.value));
     adminCell.font={name:FONT,size:9.5,color:{argb:"FF5B6B7A"}};
     adminCell.alignment={horizontal:"center",vertical:"middle"};
     adminCell.border=(r===catStart)?{...border,top:catTop}:border;
@@ -2132,6 +2150,10 @@ function addProgressSheet(wb, sheetName, names, opts){
     r++;
   });
   flushCatMerge(r-1);
+
+  // 担当者が複数人入ると既定の幅では見切れるので、中身に合わせて広げる。
+  // 広げすぎるとA4横1ページに収める印刷設定で全体が小さくなるため上限を設ける。
+  ws.getColumn(lastCol).width=Math.min(40, Math.max(11, maxAdminW+2.5));
 }
 
 /* ---- Excel取込（差分をポップアップで確認してから反映） ---- */
