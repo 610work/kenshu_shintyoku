@@ -262,8 +262,10 @@
   tr.catstart td{border-top:2px solid var(--line)}
   .catlabel{padding-top:11px}
 
-  .stcell{text-align:center;min-width:96px;padding:7px 8px}
-  .cellbox{display:flex;flex-direction:column;align-items:center;gap:4px}
+  /* セル幅を固定する。記号や日付・New!の有無で中身の幅が変わっても
+     列がガタガタ動かないようにするため（可変にすると押すたびに表が伸縮する） */
+  .stcell{text-align:center;width:118px;min-width:118px;max-width:118px;padding:7px 6px}
+  .cellbox{display:flex;flex-direction:column;align-items:center;gap:4px;min-height:96px;justify-content:flex-start;position:relative}
   .stbtn{width:46px;height:46px;border-radius:11px;border:1.5px solid transparent;font-size:24px;font-weight:700;cursor:pointer;transition:transform .05s;display:inline-flex;align-items:center;justify-content:center}
   .stbtn:active{transform:scale(.9)}
   .st-ok{background:var(--ok-bg);color:var(--ok)}
@@ -273,16 +275,19 @@
   .st-empty{background:#fff;border:1.5px dashed var(--line);color:#c7d0d8}
   .st-empty:hover{border-color:var(--brand);color:var(--brand)}
   .cellrow{display:flex;gap:4px;align-items:center;justify-content:center}
-  .datebtn{font-size:13.5px;color:#c0cad3;background:none;border:none;padding:0 3px;cursor:pointer;line-height:1.2;font-variant-numeric:tabular-nums}
+  /* 「日付」と「26/07/26」で幅が変わらないよう最小幅をそろえる */
+  .datebtn{font-size:13.5px;color:#c0cad3;background:none;border:none;padding:0 3px;cursor:pointer;line-height:1.2;font-variant-numeric:tabular-nums;min-width:58px;text-align:center}
   .datebtn:hover{color:var(--brand)}
   .datebtn.set{color:var(--sub);font-weight:600}
   /* 24時間以内に更新されたセルの目印（赤い四角に「New!」）。
      表全体が同時に描画されるので、すべてのバッジの動きは自然に揃う。 */
   .newbadge{
-    display:inline-block;flex-shrink:0;
+    /* セルの右上に重ねて表示する。位置を固定（absolute）にすることで
+       New!が出てもセルの幅・高さが変わらない */
+    position:absolute;top:0;right:0;
     background:#e0342f;color:#fff;
     font-size:9px;font-weight:800;letter-spacing:.02em;line-height:1;
-    padding:3px 4px;border-radius:3px;
+    padding:3px 4px;border-radius:3px;white-space:nowrap;pointer-events:none;
     box-shadow:0 1px 3px rgba(224,52,47,.45);
     transform-origin:center;
     /* 優しく脈打たせる。透明度は動かさないので、アニメーションが止まる環境
@@ -490,8 +495,11 @@
     .name-th{font-size:10.5px;font-weight:700}
     .name-job{font-size:7.5px}
     .progbar{width:40px}
-    .stcell{min-width:0}
-    .cellbox{gap:1px}
+    /* 画面ではセル幅を118pxに固定しているが、印刷では用紙幅に合わせて
+       自動配分させる（固定のままだとA4に収まらず崩れる） */
+    .stcell{width:auto;min-width:0;max-width:none}
+    .cellbox{gap:1px;min-height:0}
+    .datebtn{min-width:0}
     .stbtn{width:auto;height:auto;border:none !important;background:transparent !important;font-size:15px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .st-ok{color:#1f9d57 !important}.st-warn{color:#d68a12 !important}.st-skip{color:#8a97a3 !important}.st-doc{color:#6b4fbb !important}
     .st-empty{color:#ccc !important}
@@ -800,6 +808,13 @@ function memoMap(it,name){
   if(typeof m==="string") return m.trim()?{"（以前の記録）":m}:{};
   return m;
 }
+// 研修生名・担当者名はデータの「キー」として保存されるため、
+// Firebaseがキーに使えない文字（. # $ [ ] /）が入っていると保存に失敗したり、
+// 意図しない階層へ書き込まれてデータが壊れる。入力時に弾く・置き換える。
+const BAD_KEY_CHARS=/[.#$\[\]\/]/;
+function hasBadKeyChars(s){ return BAD_KEY_CHARS.test(String(s||"")); }
+function sanitizeKeyName(s){ return String(s||"").replace(/[.#$\[\]\/]/g,"_"); }
+
 // そのセルを最後に触った日時を記録する（24時間以内かを判定するため、時刻まで持つ）。
 // 研修日(date)は「初めて○/▲を付けた日」なので、後から記号やコメントを
 // 直した場合には変わらない。「最近動いた項目」を示すために別で持つ。
@@ -1042,7 +1057,9 @@ function cycle(id,name){const it=state.items.find(x=>x.id===id);
   // ○/▲以外（未実施・対象外・書類）に変わったら日付は不要なのでクリアする
   if(next==="○"||next==="▲"){ if(!it.date[name]) it.date[name]=todayStr(); }
   else if(next==="―" && it.date[name]) it.date[name]=""; // 対象外に戻した時だけ消す（書・未実施は日付を残す）
-  markUpdated(it,name);
+  // 未実施（空欄）に戻したセルは「更新あり」の対象から外し、New!を消す
+  if(next==="" && it.upd) delete it.upd[name];
+  else markUpdated(it,name);
   // 同じマスを続けて切り替えている間は履歴を1件にまとめる。
   // 連続操作の「最初の値」を起点に、最終的な値だけを残す。
   const key="cell:"+id+":"+name;
@@ -1348,10 +1365,10 @@ function render(){
       // 担当者絞込中：該当セルを強調、それ以外は薄く
       const whoCls=filterWho?(whoIncludes(it,n,filterWho)?" who-hit":" who-dim"):"";
       html+=`<td class="stcell"><div class="cellbox${whoCls}">
+        ${updatedRecently(it,n)?'<span class="newbadge" title="24時間以内に更新されました">New!</span>':''}
         <button class="stbtn ${stClass(v)}" onclick="cycle(${it.id},${escJ(n)})">${v||"·"}</button>
         <div class="cellrow">
           <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},${escJ(n)})">${dtShort||"日付"}</button>
-          ${updatedRecently(it,n)?'<span class="newbadge" title="24時間以内に更新されました">New!</span>':''}
           <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},${escJ(n)})" title="${escA(memoTip)}">${memoOn?"":"🗨"}</button>
         </div>
         <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},${escJ(n)})" title="${escA(who)}">${escI(who)}</button>
@@ -1504,6 +1521,7 @@ function unarchiveTrainee(n){
 function addTrainee(){
   const inp=document.getElementById('newTrainee');const nm=(inp.value||"").trim();
   if(!nm)return;
+  if(hasBadKeyChars(nm)){ toast("名前に . # $ [ ] / は使えません"); return; }
   if(state.names.includes(nm)){
     // 修了者と同名なら「表に戻す」扱いにする
     if((state.archived||[]).includes(nm)){ unarchiveTrainee(nm); inp.value=""; return; }
@@ -1633,7 +1651,7 @@ function renderAdminList(){
       <button class="mini" onclick="delAdmin('${a.replace(/'/g,"\\'")}')">削除</button></div>`;
   });
 }
-function addAdmin(){const inp=document.getElementById('newAdmin');const nm=(inp.value||"").trim();if(!nm)return;if(state.admins.includes(nm)){toast("同じ担当者がいます");return;}state.admins.push(nm);inp.value="";save();renderAdminList();toast(`担当者「${nm}」を追加`);}
+function addAdmin(){const inp=document.getElementById('newAdmin');const nm=(inp.value||"").trim();if(!nm)return;if(hasBadKeyChars(nm)){toast("名前に . # $ [ ] / は使えません");return;}if(state.admins.includes(nm)){toast("同じ担当者がいます");return;}state.admins.push(nm);inp.value="";save();renderAdminList();toast(`担当者「${nm}」を追加`);}
 function delAdmin(a){if(!confirm(`担当者「${a}」を候補から削除しますか？（入力済みの箇所はそのまま残ります）`))return;state.admins=state.admins.filter(x=>x!==a);save();renderAdminList();toast(`「${a}」を削除しました`);}
 function moveAdmin(i,d){const j=i+d;if(j<0||j>=state.admins.length)return;[state.admins[i],state.admins[j]]=[state.admins[j],state.admins[i]];save();renderAdminList();}
 
@@ -1848,6 +1866,7 @@ function openOperator(){
 function pickOperator(name){
   name=(name||"").trim();
   if(!name){ toast("名前を選ぶか入力してください"); return; }
+  if(hasBadKeyChars(name)){ toast("名前に . # $ [ ] / は使えません"); return; }
   try{ localStorage.setItem('operatorName',name); }catch(e){}
   updateOpBtn();
   closeModal('modalOperator');
@@ -2215,7 +2234,9 @@ function analyzeSheet(ws){
     const t=normTitle(raw);
     if(!t||IGNORE_HEADS.includes(t.toLowerCase())) continue;
     if(state.names.some(n=>normTitle(n)===t)) continue;
-    newNameCols[raw.replace(/\s+/g," ").trim()]={col:c,changes:[],invalid:0};
+    // 外部のExcel由来なので、キーに使えない文字は _ に置き換えてから取り込む
+    const safe=sanitizeKeyName(raw.replace(/\s+/g," ").trim());
+    if(safe) newNameCols[safe]={col:c,changes:[],invalid:0};
   }
 
   // 現在の項目一覧と照合する索引（カテゴリ＋項目名／項目名のみ）
