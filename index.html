@@ -596,6 +596,8 @@
         <b>日付</b>：初めて○か▲を付けた日が自動で入ります。日付をクリックするとカレンダーで変更できます。／
         <b>コメント</b>：🗨をクリックでメモを書けます（記入済みは色付きの💬）。／
         <b>担当者</b>：セル下部の四角をクリックで、研修をやった人を選択（<b>複数人選べます</b>）。／
+        <b>達成率</b>：<b>○と書</b>を完了として数えます。<b>―（対象外）</b>はその人がやらない項目なので分母から外れ、
+        あとから実施して○に変えれば自動で分母・分子に入ります（余分にやっても率は下がりません）。／
         <b>カテゴリ名をクリック</b>すると折りたたみできます。／
         研修生・担当者・研修項目は「⚙設定」からいつでも増減できます。／
         <b>変更は自動で保存され、他の研修担当者の画面にもすぐ反映されます</b>（Excelをメールで送る必要はありません）。画面右上の表示が「🟢 接続中」なら正常です。
@@ -1228,7 +1230,18 @@ function setJobFilter(v){
   if(sel) sel.classList.toggle('on',!!v);
   render();
 }
-function progressFor(name){let done=0,total=0;state.items.forEach(it=>{const v=it.vals[name]||"";if(v==="―")return;total++;if(v==="○")done++;});return{done,total,pct:total?Math.round(done/total*100):0};}
+// 達成率：○と書（書類）を「完了」として数える。
+// ―（対象外）はその人がやらない項目なので分母から外す（▲は未完了として分母のみ）。
+function progressFor(name){
+  let done=0,total=0;
+  state.items.forEach(it=>{
+    const v=it.vals[name]||"";
+    if(v==="―")return;          // 対象外は数えない
+    total++;
+    if(v==="○"||v==="書")done++; // 書類も完了扱い
+  });
+  return{done,total,pct:total?Math.round(done/total*100):0};
+}
 
 /* ---- who popover（複数選択可） ---- */
 let popTarget=null;
@@ -1373,7 +1386,7 @@ function render(){
   names.forEach(n=>{
     const p=progressFor(n);
     const job=(state.traineeJob||{})[n]||"";
-    html+=`<th title="○ ${p.done}件／対象 ${p.total}項目">
+    html+=`<th title="完了（○・書）${p.done}件／対象 ${p.total}項目（―は除く）">
       <div class="name-th">${escI(n)}</div>
       ${job?`<div class="name-job">${escI(job)}</div>`:""}
       <div class="prog"><div class="progbar"><span style="width:${p.pct}%"></span></div><div class="progtxt">${p.pct}%</div></div></th>`;
@@ -2072,7 +2085,7 @@ function addProgressSheet(wb, sheetName, names, opts){
   // 4行目：達成率（○の割合。―は対象外として除外）
   ws.mergeCells(4,1,4,2);
   const prCell=ws.getCell(4,1);
-  prCell.value="達成率（○の割合）";
+  prCell.value="達成率（○・書の割合）";
   prCell.font={name:FONT,size:9,bold:true,color:{argb:"FF5B6B7A"}};
   prCell.alignment={horizontal:"right",vertical:"middle"};
   prCell.border=border;
