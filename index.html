@@ -187,6 +187,7 @@
   .searchbox input:focus{border-color:var(--brand);background:#fff}
   .searchbox svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;fill:var(--sub)}
   .btn{padding:9px 15px;border:1px solid var(--line);background:#fff;border-radius:9px;font-size:14.5px;font-weight:600;cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .only-sm{display:none} /* スマホでだけ出すボタン（⋯メニューなど） */
   .btn:hover{border-color:var(--brand);color:var(--brand)}
   .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
   .btn.primary:hover{background:var(--brand-d)}
@@ -254,7 +255,7 @@
   /* ジャンプ先のカテゴリを一瞬ハイライト */
   tr.jumpflash td{background:#fff3d6 !important;transition:background .3s}
   .tablecard{background:var(--panel);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--line)}
-  .scroll{overflow:auto;max-height:calc(100vh - var(--header-h,110px) - 40px)}
+  .scroll{overflow:auto;max-height:calc(100vh - var(--header-h,110px) - 40px);-webkit-overflow-scrolling:touch}
   table{border-collapse:separate;border-spacing:0;width:100%;min-width:680px}
   thead th{position:sticky;top:0;z-index:20;background:#f7fafc;font-size:15px;font-weight:700;color:var(--sub);padding:11px 8px;border-bottom:2px solid var(--line);white-space:nowrap;text-align:center}
   thead th.cat-h,thead th.item-h{text-align:left}
@@ -478,10 +479,10 @@
   .dpop input[type=date]{font-size:15px;padding:8px 10px;border:1.5px solid var(--line);border-radius:9px;outline:none;font-family:inherit}
   .dpop input[type=date]:focus{border-color:var(--brand)}
   .dpop .row,.cpop .row{display:flex;gap:8px;margin-top:10px;justify-content:flex-end}
-  .cpop textarea{width:280px;height:80px;font-size:14.5px;padding:9px 11px;border:1.5px solid var(--line);border-radius:9px;outline:none;resize:vertical;font-family:inherit}
+  .cpop textarea{width:min(280px,calc(100vw - 70px));height:80px;font-size:16px;padding:9px 11px;border:1.5px solid var(--line);border-radius:9px;outline:none;resize:vertical;font-family:inherit}
   .cpop textarea:focus{border-color:var(--brand)}
   /* 他の担当者のコメント（読み取り専用） */
-  #cpopOthers{max-width:280px;max-height:150px;overflow-y:auto;margin-bottom:10px}
+  #cpopOthers{max-width:min(280px,calc(100vw - 70px));max-height:150px;overflow-y:auto;margin-bottom:10px}
   .cmt-other{background:var(--bg);border-radius:8px;padding:7px 10px;margin-bottom:6px;font-size:13px;line-height:1.5;word-break:break-all}
   .cmt-other-au{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--doc);margin-bottom:2px}
   .cmt-date{font-weight:600;color:#9aa7b3;font-size:10.5px}
@@ -496,12 +497,65 @@
   .catarrow{display:inline-block;font-size:10px;margin-right:3px;transition:transform .15s}
   .collapsed-row td{background:#fafbfd;color:var(--sub);font-size:13.5px}
 
-  @media(max-width:640px){
-    .searchbox input{width:120px}
-    .col-item{min-width:150px;max-width:150px;left:70px}
-    .col-cat{min-width:70px;max-width:70px}
-    thead th.col-item{left:70px}
+  /* ================= スマホ対応 ================= */
+  /* 〜740px：ヘッダーを圧縮（印刷・Excel・履歴は「⋯」メニューへ） */
+  @media(max-width:740px){
+    .hide-sm{display:none}
+    .only-sm{display:inline-flex;padding:9px 12px;font-size:17px;line-height:1}
+    .btn-txt{display:none}       /* 「🗨 コメント」→「🗨」などアイコンだけに */
+    .bar{padding:9px 10px;gap:7px}
+    .title{font-size:14px;gap:7px}
+    .title .dot{width:23px;height:23px;font-size:13px;border-radius:7px}
+    .btn{padding:9px 11px}
+    .searchbox{flex:1;min-width:90px}
+    /* iPhoneは16px未満の入力欄にフォーカスすると勝手にズームするため16pxにする */
+    .searchbox input{width:100%;min-width:0;font-size:16px;padding:8px 10px 8px 30px}
+    /* 凡例は「❓使い方」にもあるので畳んで縦幅を稼ぐ */
+    .legend{display:none}
+    .subbar{padding:0 10px 9px;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .subbar::-webkit-scrollbar{display:none}
+    .filterpills{flex-shrink:0}
+    .pill,.who-filter{white-space:nowrap;flex-shrink:0}
+    .wrap{margin:10px auto;padding:0 8px}
+    /* サマリーは2×2のカードに */
+    .summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+    .scard{min-width:0;padding:10px 13px}
+    .scard .n{font-size:21px}
+    .scard .l{font-size:11.5px}
   }
+  /* 〜640px：表・モーダル・入力をタッチ向けに */
+  @media(max-width:640px){
+    .col-item{min-width:148px;max-width:148px;left:64px}
+    .col-cat{min-width:64px;max-width:64px;font-size:12.5px}
+    thead th.col-item{left:64px}
+    .itemname{font-size:14px;line-height:1.45}
+    tbody td{padding:7px 5px}
+    thead th{padding:8px 5px;font-size:13px}
+    .name-th{font-size:15px}
+    /* セルはひと回り小さく。ただしボタンは指で押しやすい44px角を確保 */
+    .stcell{width:96px;min-width:96px;max-width:96px;padding:6px 4px}
+    .cellbox{min-height:88px;gap:3px}
+    .stbtn{width:44px;height:44px;font-size:22px;border-radius:10px}
+    .datebtn{font-size:12px;min-width:50px}
+    .whobtn{font-size:11.5px;max-width:86px;padding:3px 5px}
+    .bulkbtn{padding:4px 8px}   /* タッチしやすく少し大きめ */
+    /* モーダルは下から出るシートに（片手で扱いやすい） */
+    .modal-bg{padding:0;align-items:flex-end}
+    .modal{max-width:none;border-radius:18px 18px 0 0;max-height:93dvh;display:flex;flex-direction:column;animation:sheetUp .22s ease}
+    .modal::before{content:"";flex-shrink:0;width:44px;height:5px;border-radius:3px;background:#d5dde4;margin:9px auto 0}
+    .modal-h{padding:10px 18px 12px}
+    .modal-b{max-height:none;flex:1;overflow:auto;padding:16px;-webkit-overflow-scrolling:touch}
+    .modal-f{padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+    .modal-f .btn{padding:11px 18px}
+    /* 入力欄のフォーカスズームを防ぐ（16px以上） */
+    .addrow input,.gate-card input,.listrow input,.itemrow input,.catgroup-h input{font-size:16px}
+    .diffrow{flex-wrap:wrap}
+    .diffrow .itm{flex-basis:100%;order:3}
+    #cardList{max-height:none}
+  }
+  /* 透明度は動かさない（タブが裏にあってアニメーションが止まっても必ず見えるように） */
+  @keyframes sheetUp{from{transform:translateY(48px)}to{transform:none}}
+  @media (prefers-reduced-motion: reduce){ .modal{animation:none} }
 
   /* ================= PRINT (A4縦) ================= */
   @media print{
@@ -574,13 +628,14 @@
         <svg viewBox="0 0 20 20"><path d="M8 4a4 4 0 103.2 6.4l3.1 3.1 1.4-1.4-3.1-3.1A4 4 0 008 4zm0 2a2 2 0 110 4 2 2 0 010-4z"/></svg>
         <input id="search" type="search" placeholder="項目を検索…" oninput="renderDebounced()">
       </div>
-      <button class="btn" style="position:relative" onclick="openComments()" title="コメントが入っている箇所の一覧。クリックでその項目へ移動できます">🗨 コメント<span class="redbadge" id="cmtBadge" style="display:none"></span></button>
-      <button class="btn" onclick="printAll()">印刷</button>
-      <button class="btn" onclick="exportExcel()" title="紙の研修ファイルと同じ形式のExcelを書き出します（A4縦印刷設定済み）">Excel出力</button>
-      <button class="btn" onclick="importExcelFile()" title="店舗などで記入されたExcelを読み込み、ネット上のデータとの違いを確認してから反映します">Excel取込</button>
-      <button class="btn" onclick="openHistory()" title="変更履歴（誰がいつ何を変えたか）">履歴</button>
+      <button class="btn" style="position:relative" onclick="openComments()" title="コメントが入っている箇所の一覧。クリックでその項目へ移動できます">🗨 <span class="btn-txt">コメント</span><span class="redbadge" id="cmtBadge" style="display:none"></span></button>
+      <button class="btn hide-sm" onclick="printAll()">印刷</button>
+      <button class="btn hide-sm" onclick="exportExcel()" title="紙の研修ファイルと同じ形式のExcelを書き出します（A4縦印刷設定済み）">Excel出力</button>
+      <button class="btn hide-sm" onclick="importExcelFile()" title="店舗などで記入されたExcelを読み込み、ネット上のデータとの違いを確認してから反映します">Excel取込</button>
+      <button class="btn hide-sm" onclick="openHistory()" title="変更履歴（誰がいつ何を変えたか）">履歴</button>
+      <button class="btn only-sm" onclick="openMore(event)" title="印刷・Excel・履歴">⋯</button>
       <button class="btn" id="opBtn" onclick="openOperator()" title="操作している人の名前（履歴に記録されます）">👤 —</button>
-      <button class="btn" onclick="openSettings(event)" title="管理系の機能をまとめたメニュー">⚙ 設定</button>
+      <button class="btn" onclick="openSettings(event)" title="管理系の機能をまとめたメニュー">⚙<span class="btn-txt"> 設定</span></button>
     </div>
     <div class="subbar">
       <div class="legend">
@@ -606,6 +661,9 @@
       </select>
       <select id="jobFilter" class="who-filter" onchange="setJobFilter(this.value)" title="職種で絞り込み：その職種の研修生だけを表示します（印刷にも反映）">
         <option value="">🏷 職種で絞込</option>
+      </select>
+      <select id="traineeFilter" class="who-filter" onchange="setTraineeFilter(this.value)" title="研修生で絞り込み：1人だけ表示します（スマホで見やすい）">
+        <option value="">👤 研修生で絞込</option>
       </select>
     </div>
   </header>
@@ -640,6 +698,12 @@
 
 <!-- popovers -->
 <div class="pop" id="pop" onclick="event.stopPropagation()"></div>
+<div class="pop" id="mpop" onclick="event.stopPropagation()">
+  <button onclick="closeAllPops();printAll()">🖨 印刷</button>
+  <button onclick="closeAllPops();exportExcel()">📤 Excel出力</button>
+  <button onclick="closeAllPops();importExcelFile()">📥 Excel取込</button>
+  <button onclick="closeAllPops();openHistory()">🕘 履歴</button>
+</div>
 <div class="pop" id="spop" onclick="event.stopPropagation()">
   <button onclick="closeAllPops();openTrainees()">👥 研修生を管理</button>
   <button onclick="closeAllPops();openAdmins()">🧑‍🏫 担当者を管理</button>
@@ -924,10 +988,13 @@ function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMo
 let filter="all";
 let filterWho=""; // 担当者絞込（空=絞込なし）
 let filterJob=""; // 職種絞込（空=全職種）
+let filterTrainee=""; // 研修生絞込（空=全員。スマホで1人だけ表示する時に使う）
 
-// 表に表示する研修生（修了者を除き、職種絞込があればその職種だけ）
+// 表に表示する研修生（修了者を除き、職種・研修生絞込があればその人たちだけ）
 function visibleNames(){
-  return activeNames().filter(n=>!filterJob || (state.traineeJob||{})[n]===filterJob);
+  return activeNames().filter(n=>
+    (!filterJob || (state.traineeJob||{})[n]===filterJob) &&
+    (!filterTrainee || n===filterTrainee));
 }
 
 // ヘッダーの高さをCSS変数に反映（表エリアの貼り付け位置・高さ計算に使う）
@@ -1260,6 +1327,7 @@ function closeAllPops(){
   document.getElementById('dpop').classList.remove('show');
   document.getElementById('cpop').classList.remove('show');
   const sp=document.getElementById('spop'); if(sp) sp.classList.remove('show');
+  const mp=document.getElementById('mpop'); if(mp) mp.classList.remove('show');
   // 担当者は whoChanged で即時保存済み。閉じたら表示だけ最新化する
   if(whoDirty){ whoDirty=false; popBtnEl=null; render(); }
 }
@@ -1284,6 +1352,12 @@ function setWhoFilter(v){
 function setJobFilter(v){
   filterJob=v;
   const sel=document.getElementById('jobFilter');
+  if(sel) sel.classList.toggle('on',!!v);
+  render();
+}
+function setTraineeFilter(v){
+  filterTrainee=v;
+  const sel=document.getElementById('traineeFilter');
   if(sel) sel.classList.toggle('on',!!v);
   render();
 }
@@ -1519,6 +1593,7 @@ function render(){
   updateCmtBadge();
   renderWhoFilter();
   renderJobFilter();
+  renderTraineeFilter();
   setHeaderVar(); // 研修生の増減やボタンの折返しでヘッダー高さが変わるため測り直す
 }
 
@@ -1529,6 +1604,16 @@ function renderWhoFilter(){
   const cur=filterWho;
   sel.innerHTML=`<option value="">👥 担当者で絞込</option>`+
     state.admins.map(a=>`<option value="${escA(a)}" ${a===cur?"selected":""}>👥 ${escI(a)} が教えた項目</option>`).join('');
+  sel.classList.toggle('on',!!cur);
+}
+// 研修生絞込セレクト（選択は維持。修了などで居なくなったら解除）
+function renderTraineeFilter(){
+  const sel=document.getElementById('traineeFilter');
+  if(!sel) return;
+  if(filterTrainee && !activeNames().includes(filterTrainee)) filterTrainee="";
+  const cur=filterTrainee;
+  sel.innerHTML=`<option value="">👤 研修生で絞込</option>`+
+    activeNames().map(n=>`<option value="${escA(n)}" ${n===cur?"selected":""}>👤 ${escI(n)} だけ表示</option>`).join('');
   sel.classList.toggle('on',!!cur);
 }
 // 職種絞込セレクト（選択は維持）
@@ -1560,6 +1645,17 @@ function toggleXlDate(ev){
   toast(xlDateOn()
     ? "Excelに研修日の記入欄を付けます（店舗で書いた日付を取込で反映できます）"
     : "研修日欄なしで出力します（紙の様式に近い見た目）");
+}
+
+/* ---- スマホ用「⋯」メニュー（印刷・Excel・履歴） ---- */
+function openMore(ev){
+  ev.stopPropagation();
+  const r=ev.target.getBoundingClientRect();
+  closeAllPops();
+  const mp=document.getElementById('mpop');
+  mp.classList.add('show');
+  mp.style.left=Math.max(8,Math.min(r.left,window.innerWidth-mp.offsetWidth-8))+"px";
+  mp.style.top=(r.bottom+6)+"px";
 }
 
 /* ---- 設定メニュー ---- */
