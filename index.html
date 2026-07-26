@@ -276,18 +276,25 @@
   .datebtn{font-size:13.5px;color:#c0cad3;background:none;border:none;padding:0 3px;cursor:pointer;line-height:1.2;font-variant-numeric:tabular-nums}
   .datebtn:hover{color:var(--brand)}
   .datebtn.set{color:var(--sub);font-weight:600}
-  /* 今日更新されたセルの目印。日付の後ろで淡く点滅させる。
-     表全体が同時に描画されるので、すべての四角の点滅は自然に揃う。 */
-  .todaymark{
-    display:inline-block;width:7px;height:7px;border-radius:2px;flex-shrink:0;
-    background:var(--ok);animation:todayPulse 1.8s ease-in-out infinite;
+  /* 24時間以内に更新されたセルの目印（赤い四角に「New!」）。
+     表全体が同時に描画されるので、すべてのバッジの動きは自然に揃う。 */
+  .newbadge{
+    display:inline-block;flex-shrink:0;
+    background:#e0342f;color:#fff;
+    font-size:9px;font-weight:800;letter-spacing:.02em;line-height:1;
+    padding:3px 4px;border-radius:3px;
+    box-shadow:0 1px 3px rgba(224,52,47,.45);
+    transform-origin:center;
+    /* 優しく脈打たせる。透明度は動かさないので、アニメーションが止まる環境
+       （タブが裏にある時など）でもバッジが消えず必ず見える。 */
+    animation:newBeat 2s ease-in-out infinite;
   }
-  @keyframes todayPulse{
-    0%,100%{opacity:.25;}
-    50%    {opacity:1;box-shadow:0 0 4px rgba(31,157,87,.7);}
+  @keyframes newBeat{
+    0%,100%{transform:scale(1);    box-shadow:0 1px 3px rgba(224,52,47,.45);}
+    50%    {transform:scale(1.12); box-shadow:0 1px 9px rgba(224,52,47,.9);}
   }
   @media (prefers-reduced-motion: reduce){
-    .todaymark{animation:none;opacity:.85;}
+    .newbadge{animation:none;}
   }
   .cmtbtn{font-size:14.5px;background:none;border:none;padding:0 2px;cursor:pointer;color:#c0cad3;line-height:1}
   .cmtbtn:hover{color:var(--brand)}
@@ -490,7 +497,7 @@
     .st-empty{color:#ccc !important}
     .datebtn{font-size:8px;color:#555;padding:0}
     .datebtn:not(.set){display:none}
-    .todaymark{display:none}
+    .newbadge{display:none}
     .cmtbtn{display:none}
     .cellrow{gap:0}
     .catarrow{display:none}
@@ -793,16 +800,22 @@ function memoMap(it,name){
   if(typeof m==="string") return m.trim()?{"（以前の記録）":m}:{};
   return m;
 }
-// そのセルを最後に触った日を記録する。
+// そのセルを最後に触った日時を記録する（24時間以内かを判定するため、時刻まで持つ）。
 // 研修日(date)は「初めて○/▲を付けた日」なので、後から記号やコメントを
-// 直した場合には変わらない。「今日動いた項目」を光らせるために別で持つ。
+// 直した場合には変わらない。「最近動いた項目」を示すために別で持つ。
 function markUpdated(it,name){
   if(!it) return;
   if(!it.upd) it.upd={};
-  it.upd[name]=todayStr();
+  it.upd[name]=Date.now();
 }
-// そのセルが今日更新されたか
-function updatedToday(it,name){ return !!(it.upd && it.upd[name]===todayStr()); }
+// そのセルが24時間以内に更新されたか
+// （旧データは "2026-07-25" のような日付文字列なので、その日のうちかで判定する）
+function updatedRecently(it,name){
+  const v=it && it.upd && it.upd[name];
+  if(!v) return false;
+  if(typeof v==="number") return (Date.now()-v) < 86400000;
+  return v===todayStr();
+}
 
 // 1件のコメント値は「文字列」（旧）または {text,date}（新）。両対応で取り出す
 function memoText(v){ return (v&&typeof v==="object")?(v.text||""):(v||""); }
@@ -1338,7 +1351,7 @@ function render(){
         <button class="stbtn ${stClass(v)}" onclick="cycle(${it.id},${escJ(n)})">${v||"·"}</button>
         <div class="cellrow">
           <button class="datebtn ${dt?'set':''}" onclick="editDate(event,${it.id},${escJ(n)})">${dtShort||"日付"}</button>
-          ${updatedToday(it,n)?'<span class="todaymark" title="今日更新されました"></span>':''}
+          ${updatedRecently(it,n)?'<span class="newbadge" title="24時間以内に更新されました">New!</span>':''}
           <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},${escJ(n)})" title="${escA(memoTip)}">${memoOn?"":"🗨"}</button>
         </div>
         <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},${escJ(n)})" title="${escA(who)}">${escI(who)}</button>
