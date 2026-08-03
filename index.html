@@ -127,6 +127,14 @@
     });
   };
 
+  // 研修サーバー側の視聴・ゲーム成績（progress/）を読む。個人カルテで表示する。
+  // キーは研修サーバーの名前正規化（空白除去・小文字化など）と同じもの。
+  window.fbFetchProgress = function(key, onOk, onNg){
+    if(!_fbReady){ onNg && onNg(); return; }
+    get(ref(_db, "progress/" + key)).then((snap)=>{ onOk(snap.val() || null); })
+      .catch(()=>{ onNg && onNg(); });
+  };
+
   // 初回のみ：DBが空なら、埋め込み初期データを書き込む
   window.fbSeedIfEmpty = function(seedObj){
     if(!_fbReady || !seedObj) return;
@@ -826,6 +834,7 @@
         <span class="pill" data-cf="all" onclick="setCardFilter(this)">すべて</span>
       </div>
       <div id="cardList"></div>
+      <div id="cardContents"></div>
     </div>
     <div class="modal-f">
       <button class="btn" onclick="printCard()">この人だけ印刷</button>
@@ -2113,7 +2122,61 @@ function openCard(name){
   cardName=name; cardFilter="warn";
   document.querySelectorAll('.pill[data-cf]').forEach(p=>p.classList.toggle('active',p.dataset.cf==="warn"));
   renderCard();
+  renderCardContents(name);
   openModal('modalCard');
+}
+
+/* ---- 研修サーバーの成績（動画視聴・ゲーム）をカルテに出す ---- */
+// 研修サーバー（gallery/view）側と同じ「同一人物キー」の正規化。
+// 名前が同じ表記なら、コード視聴・本社用リンクどちらの記録もここで拾える。
+function traineeKeyOf(name){
+  return String(name||"").normalize("NFKC").replace(/[\s　]+/g,"")
+    .toLowerCase().replace(/[.#$\[\]\/]/g,"_");
+}
+function renderCardContents(name){
+  const box=document.getElementById('cardContents');
+  if(!box) return;
+  const head='<div class="card-cat">🎬 研修コンテンツの成績（動画・ゲーム）</div>';
+  box.innerHTML=head+'<div class="empty-note" style="padding:12px">読み込み中…</div>';
+  if(!window.fbFetchProgress){ box.innerHTML=''; return; }
+  window.fbFetchProgress(traineeKeyOf(name),(data)=>{
+    if(cardName!==name) return; // 別の人のカルテに切り替わっていたら捨てる
+    const recs=Object.values(data||{}).filter(Boolean)
+      .sort((a,b)=>(b.lastViewedAt||0)-(a.lastViewedAt||0));
+    if(!recs.length){
+      box.innerHTML=head+`<div class="empty-note" style="padding:12px">記録がありません（研修サーバーで「${escI(name)}」の名前で視聴・プレイすると、ここに表示されます）</div>`;
+      return;
+    }
+    let html=head;
+    recs.forEach(r=>{
+      const isGame=r.type==="game";
+      let perf="";
+      if(isGame){
+        const parts=[];
+        if(r.gameScore!==undefined && r.gameScore!==null)
+          parts.push(`ベスト ${Number(r.gameScore)||0}${r.gameTotal?"/"+(Number(r.gameTotal)||0):"件"}`);
+        if((Number(r.gamePlayed)||0)>0)
+          parts.push(`累計 ${Number(r.gameCorrect)||0}正解/${Number(r.gamePlayed)||0}問（${Math.round((Number(r.gameCorrect)||0)/(Number(r.gamePlayed)||1)*100)}%）`);
+        perf=parts.join("　")||`${Math.round((r.watchedSeconds||0)/60)}分プレイ（成績記録なし）`;
+      }else{
+        const pct=r.durationSeconds?Math.min(100,Math.round((r.watchedSeconds||0)/r.durationSeconds*100)):null;
+        perf=pct===null?`${Math.round((r.watchedSeconds||0)/60)}分視聴`:`視聴率 ${pct}%`;
+        if(r.quizTotal) perf+=`　確認クイズ ${Number(r.quizCorrect)||0}/${Number(r.quizTotal)||0}`;
+      }
+      const last=r.lastViewedAt?new Date(r.lastViewedAt).toLocaleDateString("ja-JP"):"";
+      html+=`<div class="card-row" style="cursor:default">
+        <span class="chip ${isGame?"doc":"ok"}" style="font-size:12px">${isGame?"🎮":"▶"}</span>
+        <span class="card-main">
+          <span class="card-item">${escI((r.title||"(無題)").replace(/\n/g," "))}</span>
+          <span class="card-meta">${escI(perf)}${last?`　📅 ${escI(last)}`:""}</span>
+        </span>
+      </div>`;
+    });
+    box.innerHTML=html;
+  },()=>{
+    if(cardName!==name) return;
+    box.innerHTML=head+'<div class="empty-note" style="padding:12px">読み込めませんでした（ネット環境をご確認ください）</div>';
+  });
 }
 function setCardFilter(el){
   document.querySelectorAll('.pill[data-cf]').forEach(p=>p.classList.remove('active'));
@@ -2187,6 +2250,7 @@ function printCard(){
     <h1>${escI(title)}</h1>
     <div class="sub">${escI(document.querySelector('.pill[data-cf].active').textContent)}／出力：${todayStr()}</div>
     ${document.getElementById('cardList').innerHTML.replace(/ onclick="[^"]*"/g,"").replace(/ title="[^"]*"/g,"")}
+    ${document.getElementById('cardContents').innerHTML.replace(/ onclick="[^"]*"/g,"").replace(/ title="[^"]*"/g,"")}
     </body></html>`);
   w.document.close();
   setTimeout(()=>{ w.print(); },300);
