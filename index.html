@@ -972,6 +972,18 @@ function markUpdated(it,name){
   if(!it.upd) it.upd={};
   it.upd[name]=Date.now();
 }
+// 「現存する」コメントが24時間以内に書かれたか。
+// コメントは自分のts（書いた時刻）を持つので、削除されればtsごと消え、
+// New!も一緒に消える（以前はセル共通のupdに記録していたため、
+// コメントを消してもNew!が残ってしまっていた）。
+function memoRecent(it,name){
+  return Object.values(memoMap(it,name)).some(v=>{
+    if(!v) return false;
+    if(String(memoText(v)).trim()==="") return false;
+    if(typeof v==="object" && typeof v.ts==="number") return (Date.now()-v.ts) < 86400000;
+    return memoDate(v)===todayStr(); // ts導入前の旧コメントは「その日のうち」で代用
+  });
+}
 // そのセルが24時間以内に更新されたか
 // （旧データは "2026-07-25" のような日付文字列なので、その日のうちかで判定する）
 function updatedRecently(it,name){
@@ -979,9 +991,8 @@ function updatedRecently(it,name){
   const mark=(it && it.vals && it.vals[name])||"";
   if(mark===""||mark==="―") return false;
   const v=it && it.upd && it.upd[name];
-  if(!v) return false;
-  if(typeof v==="number") return (Date.now()-v) < 86400000;
-  return v===todayStr();
+  const updRecent = v ? (typeof v==="number" ? (Date.now()-v) < 86400000 : v===todayStr()) : false;
+  return updRecent || memoRecent(it,name);
 }
 
 // 1件のコメント値は「文字列」（旧）または {text,date}（新）。両対応で取り出す
@@ -1312,6 +1323,7 @@ function deleteOthersMemo(author){
   if(!it) return;
   if(!confirm(`${author} さんが書いたコメントを削除しますか？`)) return;
   if(typeof it.memo[cpopTarget.name]==="object" && it.memo[cpopTarget.name]) delete it.memo[cpopTarget.name][author];
+  if(it.upd) delete it.upd[cpopTarget.name]; // コメント由来のNew!を確実に消す
   logChange(`${cpopTarget.name}／${it.item}：${author}のコメントを${getOperator()}が削除`);
   save(); render();
   refreshCpopOthers(); // ポップは開いたまま一覧だけ更新
@@ -1325,9 +1337,10 @@ function applyMemo(){
       it.memo[cpopTarget.name]=memoMap(it,cpopTarget.name); // 旧文字列を担当者別に変換
     }
     const txt=document.getElementById('cpopText').value.trim();
-    if(txt) it.memo[cpopTarget.name][author]={text:txt, date:todayStr()};
-    else delete it.memo[cpopTarget.name][author];
-    markUpdated(it,cpopTarget.name);
+    // New!の判定はコメント自身のts（memoRecent）で行うため、セル共通のupdは触らない。
+    // 削除時は、過去にコメントで押されたupdが残ってNew!が消えない事故を防ぐためリセットする
+    if(txt) it.memo[cpopTarget.name][author]={text:txt, date:todayStr(), ts:Date.now()};
+    else{ delete it.memo[cpopTarget.name][author]; if(it.upd) delete it.upd[cpopTarget.name]; }
     logChange(`${cpopTarget.name}／${it.item}：${author}のコメントを${txt?"更新":"削除"}`);
   }
   closeAllPops();save();render();
@@ -1339,7 +1352,7 @@ function clearMemo(){
     const author=getOperator()||"（名前未設定）";
     if(typeof it.memo[cpopTarget.name]==="object"&&it.memo[cpopTarget.name]) delete it.memo[cpopTarget.name][author];
     else it.memo[cpopTarget.name]={};
-    markUpdated(it,cpopTarget.name);
+    if(it.upd) delete it.upd[cpopTarget.name]; // コメント由来のNew!を確実に消す
     logChange(`${cpopTarget.name}／${it.item}：${author}のコメントを削除`);
   }
   closeAllPops();save();render();
