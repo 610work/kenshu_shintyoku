@@ -348,6 +348,13 @@
     border-style:solid;border-width:4px 5px 0 0;border-color:#e0342f transparent transparent transparent;
   }
   .cmtbtn.set:hover{background:#c62b26}
+  /* ゲーム&テストのスコアチップ（研修サーバーの成績を表に直接出す） */
+  .gscore{border:none;border-radius:7px;font-size:12.5px;font-weight:800;padding:3px 8px;
+    cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap}
+  .gscore.good{background:var(--ok-bg);color:var(--ok)}
+  .gscore.mid{background:var(--warn-bg);color:var(--warn)}
+  .gscore.low{background:#fdeaea;color:#b23b3b}
+  .gscore:hover{filter:brightness(.93)}
   .whobtn{font-size:13px;color:var(--sub);background:var(--bg);border:1px solid var(--line);border-radius:7px;min-width:36px;min-height:25px;padding:3px 7px;cursor:pointer;max-width:104px;white-space:normal;word-break:break-all;line-height:1.35}
   .whobtn:hover{border-color:var(--brand);background:#eef4f8}
   .whobtn.set{color:var(--doc);background:var(--doc-bg);border-color:transparent;font-weight:600}
@@ -608,6 +615,7 @@
     .catarrow{display:none}
     .whobtn{border:none;background:transparent;padding:0;font-size:8.5px;color:#6b4fbb;max-width:none;min-height:0;min-width:0}
     .whobtn:not(.set){color:transparent}
+    .gscore{background:transparent !important;padding:0;font-size:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     tr.catstart td{border-top:1px solid #999}
     .print-title{display:block !important;text-align:center;font-size:14px;font-weight:700;margin-bottom:6px}
   }
@@ -1522,6 +1530,7 @@ document.addEventListener('keydown',(e)=>{
 });
 
 function render(){
+  kickProgressFetch(); // ゲーム&テストのスコア表示用（初回＋10分ごと）
   const q=(document.getElementById('search').value||"").trim().toLowerCase();
   const names=visibleNames(); // 修了者を除き、職種絞込があればその職種だけ
   const tbl=document.getElementById('tbl');
@@ -1596,6 +1605,7 @@ function render(){
           <button class="cmtbtn ${memoOn?'set':''}" onclick="editMemo(event,${it.id},${escJ(n)})" title="${escA(memoTip)}">${memoOn?"":"🗨"}</button>
         </div>
         <button class="whobtn ${who?'set':''}" onclick="openWho(event,${it.id},${escJ(n)})" title="${escA(who)}">${escI(who)}</button>
+        ${gameChipHtml(n,it)}
       </div></td>`;
     });
     html+="</tr>";
@@ -2155,6 +2165,67 @@ function progressKeysFor(name){
     return !otherKeys.some(k=>k.length>myKey.length && (pk===k||pk.startsWith(k)));
   });
 }
+/* ---- 「ゲーム&テスト」カテゴリのセルにスコアを出す ---- */
+// 項目名とコンテンツ名が違うものの対応表（新しいゲームで名前が合わない時はここに足す）
+const GAME_ALIAS={"フレーム名ゲーム":"フレーム当てクイズ"};
+const GAME_CAT="ゲーム&テスト";
+function contentKeyOf(s){ return String(s||"").normalize("NFKC").replace(/[\s　]+/g,"").toLowerCase(); }
+// この研修生×項目に対応する研修サーバーの記録を探す（同名は最新を採用）
+function gameRecFor(name,itemName){
+  if(!_progAll) return null;
+  const target=contentKeyOf(GAME_ALIAS[itemName]||itemName);
+  if(!target) return null;
+  let best=null;
+  progressKeysFor(name).forEach(pk=>{
+    Object.values(_progAll[pk]||{}).filter(Boolean).forEach(r=>{
+      const tk=contentKeyOf(r.title);
+      if(!tk) return;
+      if(tk===target||tk.includes(target)||target.includes(tk)){
+        if(!best||(r.lastViewedAt||0)>(best.lastViewedAt||0)) best=r;
+      }
+    });
+  });
+  return best;
+}
+function gameChipHtml(name,it){
+  if(it.cat!==GAME_CAT||!_progAll) return "";
+  const r=gameRecFor(name,it.item);
+  if(!r) return "";
+  let label="",pct=null,icon="🎮";
+  if(r.type==="game"){
+    if(r.gameScore!==undefined&&r.gameScore!==null){
+      pct=r.gameTotal?Math.round((Number(r.gameScore)||0)/(Number(r.gameTotal)||1)*100):null;
+      label=pct!==null?`${pct}点`:`${Number(r.gameScore)||0}件`;
+    }else if((Number(r.gamePlayed)||0)>0){
+      pct=Math.round((Number(r.gameCorrect)||0)/(Number(r.gamePlayed)||1)*100);
+      label=`正解率${pct}%`;
+    }else return "";
+  }else{
+    if(!r.durationSeconds) return "";
+    icon="▶";
+    pct=Math.min(100,Math.round((r.watchedSeconds||0)/r.durationSeconds*100));
+    label=`${pct}%視聴`;
+  }
+  const cls=pct===null?"mid":(pct>=80?"good":pct>=50?"mid":"low");
+  const parts=[];
+  if(r.gameScore!==undefined&&r.gameScore!==null) parts.push(`ベスト ${Number(r.gameScore)||0}${r.gameTotal?"/"+(Number(r.gameTotal)||0):"件"}`);
+  if((Number(r.gamePlayed)||0)>0) parts.push(`累計 ${Number(r.gameCorrect)||0}正解/${Number(r.gamePlayed)||0}問`);
+  if(r.name) parts.push(`👤${r.name}`);
+  if(r.lastViewedAt) parts.push(`最終 ${new Date(r.lastViewedAt).toLocaleDateString("ja-JP")}`);
+  const tip=parts.join("　")+"（クリックでカルテを開く）";
+  return `<button class="gscore ${cls}" onclick="event.stopPropagation();openCard(${escJ(name)})" title="${escA(tip)}">${icon}${escI(label)}</button>`;
+}
+// 成績の自動読み込み：ログイン後の描画時に1回（以後10分ごとに更新）
+let _progFetching=false;
+function kickProgressFetch(){
+  if(!window.fbFetchAllProgress||_progFetching) return;
+  if(_progAll!==null && Date.now()-_progAllAt<600000) return;
+  _progFetching=true;
+  fetchAllProgress(
+    ()=>{ _progFetching=false; render(); },
+    ()=>{ _progFetching=false; if(_progAll===null){_progAll={};_progAllAt=Date.now();} });
+}
+
 function renderCardContents(name){
   const box=document.getElementById('cardContents');
   if(!box) return;
