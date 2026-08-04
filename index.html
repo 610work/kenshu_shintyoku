@@ -839,6 +839,7 @@
       <div class="filterpills" style="margin:14px 0 12px">
         <span class="pill active" data-cf="warn" onclick="setCardFilter(this)">要フォロー(▲)</span>
         <span class="pill" data-cf="empty" onclick="setCardFilter(this)">未実施</span>
+        <span class="pill" data-cf="todo" onclick="setCardFilter(this)">▲＋未実施</span>
         <span class="pill" data-cf="done" onclick="setCardFilter(this)">完了(○・書)</span>
         <span class="pill" data-cf="memo" onclick="setCardFilter(this)">コメントあり</span>
         <span class="pill" data-cf="all" onclick="setCardFilter(this)">すべて</span>
@@ -2352,6 +2353,7 @@ function renderCard(){
     if(cardFilter==="all") return v!=="―";
     if(cardFilter==="warn") return v==="▲";
     if(cardFilter==="empty") return v==="";
+    if(cardFilter==="todo") return v==="▲"||v===""; // 要フォローと未実施をまとめて（宿題リスト印刷用）
     if(cardFilter==="done") return v==="○"||v==="書";
     if(cardFilter==="memo") return hasMemo(it,n);
     return true;
