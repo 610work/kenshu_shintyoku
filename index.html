@@ -354,6 +354,7 @@
   .gscore.good{background:var(--ok-bg);color:var(--ok)}
   .gscore.mid{background:var(--warn-bg);color:var(--warn)}
   .gscore.low{background:#fdeaea;color:#b23b3b}
+  .gscore.pass{background:linear-gradient(135deg,#f9ecc4,#f2d78d);color:#7a5c14;border:1px solid #dcb95c}
   .gscore:hover{filter:brightness(.93)}
   .whobtn{font-size:13px;color:var(--sub);background:var(--bg);border:1px solid var(--line);border-radius:7px;min-width:36px;min-height:25px;padding:3px 7px;cursor:pointer;max-width:104px;white-space:normal;word-break:break-all;line-height:1.35}
   .whobtn:hover{border-color:var(--brand);background:#eef4f8}
@@ -2206,6 +2207,24 @@ function gameChipHtml(name,it){
   if(!r) return "";
   let label="",pct=null,icon="🎮";
   if(r.type==="game"){
+    // 合格ルール：別々の日に100点を2回（同じ日の2回目以降は数えない）。
+    // dayScores は視聴画面が記録する「日ごとのベスト(%)」。
+    const days=r.dayScores?Object.keys(r.dayScores).sort():[];
+    const fmtD=(d)=>String(d).replace(/^\d{4}-/,"").replace(/^0/,"").replace(/-0?/,"/");
+    const perfect=days.filter(d=>Number(r.dayScores[d])>=100);
+    if(perfect.length>=2){
+      const tip2=`💯 ${fmtD(perfect[0])} と ${fmtD(perfect[1])} に100点 → 合格！`+(r.name?`　👤${r.name}`:"")+"（クリックでカルテを開く）";
+      return `<button class="gscore pass" onclick="event.stopPropagation();openCard(${escJ(name)})" title="${escA(tip2)}">🏅合格</button>`;
+    }
+    if(perfect.length===1){
+      const others=days.filter(d=>d!==perfect[0]);
+      const last=others.length?others[others.length-1]:null;
+      const lbl=`💯${fmtD(perfect[0])}`+(last?`・${fmtD(last)} ${Number(r.dayScores[last])||0}点`:"");
+      const tip2=`${fmtD(perfect[0])}に100点。別の日にもう1回100点で合格`
+        +(last?`／直近の別日挑戦 ${fmtD(last)}：${Number(r.dayScores[last])||0}点`:"")
+        +(r.name?`　👤${r.name}`:"")+"（クリックでカルテを開く）";
+      return `<button class="gscore ${last?"mid":"good"}" onclick="event.stopPropagation();openCard(${escJ(name)})" title="${escA(tip2)}">${escI(lbl)}</button>`;
+    }
     if(r.gameScore!==undefined&&r.gameScore!==null){
       pct=r.gameTotal?Math.round((Number(r.gameScore)||0)/(Number(r.gameTotal)||1)*100):null;
       label=pct!==null?`${pct}点`:`${Number(r.gameScore)||0}件`;
@@ -2265,6 +2284,13 @@ function renderCardContents(name){
       let perf="";
       if(isGame){
         const parts=[];
+        // 合格状況（別々の日に100点×2回）を先頭に出す
+        if(r.dayScores){
+          const days=Object.keys(r.dayScores).sort();
+          const perfect=days.filter(d=>Number(r.dayScores[d])>=100);
+          if(perfect.length>=2) parts.push(`🏅合格（${fmtMemoDate(perfect[0])}・${fmtMemoDate(perfect[1])}に100点）`);
+          else if(perfect.length===1) parts.push(`💯${fmtMemoDate(perfect[0])}に100点（別日にもう1回で合格）`);
+        }
         if(r.gameScore!==undefined && r.gameScore!==null)
           parts.push(`ベスト ${Number(r.gameScore)||0}${r.gameTotal?"/"+(Number(r.gameTotal)||0):"件"}`);
         if((Number(r.gamePlayed)||0)>0)
