@@ -2182,6 +2182,7 @@ function progressKeysFor(name){
 /* ---- 「ゲーム&テスト」カテゴリのセルにスコアを出す ---- */
 // 項目名とコンテンツ名が違うものの対応表（新しいゲームで名前が合わない時はここに足す）
 const GAME_ALIAS={"フレーム名ゲーム":"フレーム当てクイズ"};
+const DIFF_JA={intro:"入門",easy:"初級",mid:"中級",hard:"上級"};
 const GAME_CAT="ゲーム&テスト";
 function contentKeyOf(s){ return String(s||"").normalize("NFKC").replace(/[\s　]+/g,"").toLowerCase(); }
 // この研修生×項目に対応する研修サーバーの記録を探す（同名は最新を採用）
@@ -2227,7 +2228,8 @@ function gameChipHtml(name,it){
     }
     if(r.gameScore!==undefined&&r.gameScore!==null){
       pct=r.gameTotal?Math.round((Number(r.gameScore)||0)/(Number(r.gameTotal)||1)*100):null;
-      label=pct!==null?`${pct}点`:`${Number(r.gameScore)||0}件`;
+      const dj=r.gameDiff?(DIFF_JA[r.gameDiff]||r.gameDiff):null;
+      label=(dj?`(${dj})`:"")+(pct!==null?`${pct}点`:`${Number(r.gameScore)||0}件`);
     }else if((Number(r.gamePlayed)||0)>0){
       pct=Math.round((Number(r.gameCorrect)||0)/(Number(r.gamePlayed)||1)*100);
       label=`正解率${pct}%`;
@@ -2240,6 +2242,7 @@ function gameChipHtml(name,it){
   }
   const cls=pct===null?"mid":(pct>=80?"good":pct>=50?"mid":"low");
   const parts=[];
+  if(r.gameDiff) parts.push(`最高難易度：${DIFF_JA[r.gameDiff]||r.gameDiff}`);
   if(r.gameScore!==undefined&&r.gameScore!==null) parts.push(`ベスト ${Number(r.gameScore)||0}${r.gameTotal?"/"+(Number(r.gameTotal)||0):"件"}`);
   if((Number(r.gamePlayed)||0)>0) parts.push(`累計 ${Number(r.gameCorrect)||0}正解/${Number(r.gamePlayed)||0}問`);
   if(r.name) parts.push(`👤${r.name}`);
@@ -2292,7 +2295,7 @@ function renderCardContents(name){
           else if(perfect.length===1) parts.push(`💯${fmtMemoDate(perfect[0])}に100点（別日にもう1回で合格）`);
         }
         if(r.gameScore!==undefined && r.gameScore!==null)
-          parts.push(`ベスト ${Number(r.gameScore)||0}${r.gameTotal?"/"+(Number(r.gameTotal)||0):"件"}`);
+          parts.push(`${r.gameDiff?"（"+(DIFF_JA[r.gameDiff]||r.gameDiff)+"）":""}ベスト ${Number(r.gameScore)||0}${r.gameTotal?"/"+(Number(r.gameTotal)||0):"件"}`);
         if((Number(r.gamePlayed)||0)>0)
           parts.push(`累計 ${Number(r.gameCorrect)||0}正解/${Number(r.gamePlayed)||0}問（${Math.round((Number(r.gameCorrect)||0)/(Number(r.gamePlayed)||1)*100)}%）`);
         perf=parts.join("　")||`${Math.round((r.watchedSeconds||0)/60)}分プレイ（成績記録なし）`;
