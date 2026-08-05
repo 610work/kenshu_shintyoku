@@ -1003,7 +1003,8 @@ function memoDate(v){ return (v&&typeof v==="object")?(v.date||""):""; }
 function fmtMemoDate(d){ return d?String(d).replace(/^\d{2}(\d{2})-/,'$1/').replace(/-/g,'/'):""; }
 function memoAuthors(it,name){
   return Object.entries(memoMap(it,name))
-    .map(([author,v])=>({author, text:memoText(v), date:memoDate(v)}))
+    .map(([author,v])=>({author, text:memoText(v), date:memoDate(v),
+      ts:(v&&typeof v==="object"&&typeof v.ts==="number")?v.ts:null}))
     .filter(o=>o.text&&o.text.trim());
 }
 function hasMemo(it,name){ return memoAuthors(it,name).length>0; }
@@ -2066,9 +2067,15 @@ function commentEntries(){
   const out=[]; const names=activeNames();
   state.items.forEach(it=>names.forEach(n=>{
     memoAuthors(it,n).forEach(o=>{
-      out.push({id:it.id,item:it.item,cat:it.cat,name:n,author:o.author,memo:o.text,date:o.date});
+      out.push({id:it.id,item:it.item,cat:it.cat,name:n,author:o.author,memo:o.text,date:o.date,ts:o.ts});
     });
   }));
+  // 更新が新しい順に並べる（時刻ts→無ければ日付。どちらも無い古いコメントは最後）
+  out.sort((a,b)=>{
+    const ta=a.ts||(a.date?new Date(a.date+"T00:00:00").getTime():0);
+    const tb=b.ts||(b.date?new Date(b.date+"T00:00:00").getTime():0);
+    return tb-ta;
+  });
   return out;
 }
 // 各コメントの「見た目の指紋」。内容が変わると別物として未確認に戻る
