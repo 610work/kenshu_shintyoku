@@ -2937,6 +2937,14 @@ function analyzeSheet(ws){
         }
       }
 
+      // ○（完璧）は格下げしない：古いExcelを取り込んでも ▲・未実施・― には戻さない。
+      // （研修は進む一方で、Excel側が古いだけの可能性が高いため。○→書 は完了同士なので許可）
+      if(cur==="○" && (nv==="▲"||nv===""||nv==="―")){
+        if(nv!==cur) skipped.push(`「${it.item}」${n}さん：Web上が既に○のため「${raw.trim()||"未実施"}」への変更は反映しません`);
+        if(newD) changes.push({id:it.id,cat:it.cat,item:it.item,name:n,oldV:cur,newV:cur,oldD,newD}); // 日付だけは反映できる
+        return;
+      }
+
       if(nv!==cur || newD) changes.push({id:it.id,cat:it.cat,item:it.item,name:n,oldV:cur,newV:nv,oldD,newD});
     });
     // 新しい研修生の記号も集める（追加が選ばれた場合だけ反映する）
