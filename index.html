@@ -2164,7 +2164,9 @@ function openCard(name){
 // 名前が同じ表記なら、コード視聴・本社用リンクどちらの記録もここで拾える。
 function traineeKeyOf(name){
   return String(name||"").normalize("NFKC").replace(/[\s　]+/g,"")
-    .toLowerCase().replace(/[.#$\[\]\/]/g,"_");
+    .toLowerCase()
+    .replace(/[ァ-ヶ]/g,(ch)=>String.fromCharCode(ch.charCodeAt(0)-0x60)) // カタカナ→ひらがな（チャン＝ちゃん）
+    .replace(/[.#$\[\]\/]/g,"_");
 }
 // progress全体は30秒だけキャッシュ（カルテを次々開いても読み直さない）
 let _progAll=null,_progAllAt=0;
