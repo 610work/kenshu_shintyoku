@@ -2228,7 +2228,9 @@ function gameChipHtml(name,it){
       return `<button class="gscore pass" onclick="event.stopPropagation();openCard(${escJ(name)})" title="${escA(tip2)}">🏅合格</button>`;
     }
     if(perfect.length===1){
-      const others=days.filter(d=>d!==perfect[0]);
+      // 「別日の挑戦」は1回目の100点より後の日だけを出す
+      //（それより前の日の点数は合格判定に関係ないため表示しない）
+      const others=days.filter(d=>d>perfect[0]);
       const last=others.length?others[others.length-1]:null;
       const lbl=`💯${fmtD(perfect[0])}`+(last?`・${fmtD(last)} ${Number(r.dayScores[last])||0}点`:"");
       const tip2=`${fmtD(perfect[0])}に100点。別の日にもう1回100点で合格`
