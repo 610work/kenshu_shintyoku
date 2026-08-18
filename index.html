@@ -1340,6 +1340,10 @@ function applyMemo(){
       it.memo[cpopTarget.name]=memoMap(it,cpopTarget.name); // 旧文字列を担当者別に変換
     }
     const txt=document.getElementById('cpopText').value.trim();
+    // 内容が変わっていなければ何もしない（書き込み時刻を更新するとNew!が復活してしまうため）
+    const prev=it.memo[cpopTarget.name][author];
+    const prevText=((prev&&typeof prev==="object")?(prev.text||""):(prev||"")).trim();
+    if(txt===prevText){ closeAllPops(); return; }
     // New!の判定はコメント自身のts（memoRecent）で行うため、セル共通のupdは触らない。
     // 削除時は、過去にコメントで押されたupdが残ってNew!が消えない事故を防ぐためリセットする
     if(txt) it.memo[cpopTarget.name][author]={text:txt, date:todayStr(), ts:Date.now()};
